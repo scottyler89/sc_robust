@@ -1,0 +1,11 @@
+anndata
+count_split
+scikit_learn
+numpy
+scipy
+matplotlib
+seaborn
+statsmodels
+networkx
+torch
+faiss-cpu
