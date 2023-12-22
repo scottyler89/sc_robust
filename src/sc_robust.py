@@ -4,7 +4,8 @@ from typing import List, Any, Optional
 from count_split.count_split import multi_split
 from anticor_features.anticor_features import get_anti_cor_genes
 from .normalization import *
-from .find_consensus import find_pcs, find_graph
+from .find_consensus import find_pcs, find_consensus_graph
+
 
 class robust(object):
     def __init__(self, 
@@ -13,12 +14,14 @@ class robust(object):
                  pc_max: Optional[int] = 250,
                  norm_function: Optional[str] = "cpm_log",
                  species: Optional[str] = "hsapiens",
+                 initial_k: Optional[int] = None,
                  seed = 123456) -> None:
         np.random.seed(123456)
+        self.initial_k = initial_k
         self.original_ad = in_ad
         self.splits = splits
         self.pc_max = pc_max
-        self.
+        self.species = species
         if norm_function not in NORM:
             raise AssertionError("norm_function arg must be one of:"+", ".join(sorted(list(NORM.keys()))))
         self.norm_function = norm_function
@@ -61,18 +64,22 @@ class robust(object):
         if subset_idxs is None:
             subset_idxs = np.arange(self.train.shape[0])
         print("performing featue selection")
+        if "gene_ids" in self.original_ad.var:
+            gene_ids = self.original_ad.var["gene_ids"].tolist()
+        else:
+            gene_ids = self.original_ad.var.index.tolist()
         self.train_feature_df = get_anti_cor_genes(self.train[subset_idxs,:].T,
-                                              self.original_ad.var.index.tolist(),
+                                              gene_ids,
                                               species=self.species)
         self.train_feat_idxs = np.where(self.train_feature_df["selected"]==True)[0]
         self.val_feature_df = get_anti_cor_genes(self.val[subset_idxs,:].T,
-                                              self.original_ad.var.index.tolist(),
+                                              gene_ids,
                                               species=self.species)
         self.val_feat_idxs = np.where(self.val_feature_df["selected"]==True)[0]
     #
     #
     def find_reproducible_pcs(self):
-        train_pc, val_pc = find_pcs(
+        self.train_pc, self.val_pc = find_pcs(
             self.train[:,self.train_feat_idxs], 
             self.val[:,self.val_feat_idxs], 
             pc_max = self.pc_max)
@@ -80,5 +87,6 @@ class robust(object):
     #
     #
     def get_consensus_graph(self):
+        find_consensus_graph(self.train_pc, self.val_pc, self.initial_k, cosine = True, use_gpu = False)
         return
 
