@@ -28,8 +28,8 @@ class robust(object):
         self.do_splits()
         self.normalize()
         self.feature_select()
-        #self.find_reproducible_pcs()
-        #self.get_consensus_graph()
+        self.find_reproducible_pcs()
+        self.get_consensus_graph()
         return
     #
     #
@@ -79,7 +79,7 @@ class robust(object):
     #
     #
     def find_reproducible_pcs(self):
-        self.train_pc, self.val_pc = find_pcs(
+        self.train_pcs, self.val_pcs = find_pcs(
             self.train[:,self.train_feat_idxs], 
             self.val[:,self.val_feat_idxs], 
             pc_max = self.pc_max)
@@ -87,6 +87,10 @@ class robust(object):
     #
     #
     def get_consensus_graph(self):
-        find_consensus_graph(self.train_pc, self.val_pc, self.initial_k, cosine = True, use_gpu = False)
+        self.indices, self.distances, self.weights, self.graph = find_consensus_graph(
+            self.train_pcs, 
+            self.val_pcs, 
+            self.initial_k, 
+            cosine = True, use_gpu = False)
         return
 
