@@ -283,7 +283,6 @@ def combine_and_sort_distances(common_edges,
         merged_index_list.append(temp_idx)
         merged_dist_list.append(temp_dist)
         merged_weight_list.append(distances_to_weights(temp_dist))
-        print(merged_weight_list[-1])
         # Add to the running total so we know how big to make the destination matrices
         n_edges_per_node.append(temp_idx.shape[0])
     #n_nodes = common_edges.shape[0]
@@ -356,8 +355,7 @@ def find_one_graph(pcs, k, cosine=True, use_gpu = False):
     if k is None:
         # Default to the log of the number of observations
         # The mi
-        k= int(round(np.log(pcs.shape[0])/2 +
-                     np.sqrt(pcs.shape[0])/2,
+        k= int(round(np.log(pcs.shape[0]),
                      0)
                )
     # bound k between 20 and 200, but follow the above heuristic or user guidance otherwise
