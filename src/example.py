@@ -25,7 +25,7 @@ def do_preprocess(local_adata):
     sc.pp.filter_cells(local_adata, min_genes=200)
     sc.pp.filter_genes(local_adata, min_cells=3)
     local_adata.var['mt'] = local_adata.var_names.str.startswith('MT-')  # annotate the group of mitochondrial genes as 'mt'
-    sc.pp.calculate_qc_metrics(local_adata, qc_vars=['mt'], percent_top=None, log1p=False, inplace=True)
+    sc.pp.calculate_qc_metrics(local_adata, qc_vars=['mt'], percent_top=None, inplace=True)
     sc.pl.violin(local_adata, ['n_genes_by_counts', 'total_counts', 'pct_counts_mt'],
                 jitter=0.4, multi_panel=True)
     sc.pl.scatter(local_adata, x='total_counts', y='pct_counts_mt')
@@ -45,22 +45,6 @@ ro_adata = do_preprocess(ro_adata)
 ro_adata = ro_adata[ro_adata.obs.pct_counts_mt < 25, :]
 ro_adata.obs= ro_adata.obs[ro_adata.obs.pct_counts_mt < 25,:]
 
-###########################################
-# Let the robust pipeline do it's thing...
-ro = robust(ro_adata)
-ro.train_feature_df.index=ro_adata.var.index
-ro.val_feature_df.index=ro_adata.var.index
-# Make a spring embedding from it
-G = nx.from_scipy_sparse_array(ro.graph)
-pos = nx.spring_layout(G)
-pos_array = np.array([v for k, v in pos.items()])
-
-# To use scanpy's plotting function's later, we'll store it
-ro_adata.obsm["X_ro_spring"]=pos_array
-# And now do leiden on the robust graph
-sc.tl.leiden(ro_adata, adjacency=ro.graph.tocsr())
-
-
 ##############
 # Run the standard scanpy tutorial code
 sc.pp.normalize_total(sc_adata, target_sum=1e4)
@@ -78,6 +62,27 @@ sc.tl.draw_graph(sc_adata)
 sc.tl.umap(sc_adata)
 sc.tl.leiden(sc_adata)
 
+###########################################
+# Let the robust pipeline do it's thing...
+ro = robust(ro_adata)
+ro.train_feature_df.index=ro_adata.var.index
+ro.val_feature_df.index=ro_adata.var.index
+# Make a spring embedding from it
+G = nx.from_scipy_sparse_array(ro.graph)
+# set the initial positions to the umaps (+noise), so that they line up more comparably
+pos = nx.spring_layout(G, pos={
+    k:v for k, v in enumerate(
+    -0.5+sc_adata.obsm["X_umap"]/np.max(-.05+sc_adata.obsm["X_umap"]).tolist())
+    })
+pos_array = np.array([v for k, v in pos.items()])
+
+# To use scanpy's plotting function's later, we'll store it
+ro_adata.obsm["X_ro_spring"]=pos_array
+# And now do leiden on the robust graph
+sc.tl.leiden(ro_adata, adjacency=ro.graph.tocsr())
+
+
+
 ##############################################
 # include it in the ro_adata for simplicity
 ro_adata.obsm["X_sc_umap"]=sc_adata.obsm["X_umap"]
@@ -88,7 +93,7 @@ sc.pl.rank_genes_groups_heatmap(ro_adata, n_genes=3)
 ##
 
 # plot
-goi=["EPCAM", "ERBB2", "XBP1", "HIF1A", "MYC", "EGFR", "VWF", "FCER1G", "LYZ"]
+goi=["log1p_total_counts","EPCAM", "ERBB2", "XBP1", "HIF1A", "MYC", "EGFR", "VWF", "FCER1G", "LYZ"]
 #sc.pl.scatter(ro_adata, basis="ro_spring", color=["leiden"]+goi)
 
 

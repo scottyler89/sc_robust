@@ -2,6 +2,7 @@ import faiss
 import torch
 import numpy as np
 import seaborn as sns
+from math import ceil
 from matplotlib import pyplot as plt
 from copy import deepcopy
 from scipy.stats import norm
@@ -359,11 +360,14 @@ def find_one_graph(pcs, k, cosine=True, use_gpu = False):
                      0)
                )
     # bound k between 20 and 200, but follow the above heuristic or user guidance otherwise
-    k = min(max([20,k]), 200)
+    k = min(k, 200)
     index = get_faiss_idx(pcs, cosine = cosine, use_gpu = use_gpu)
     indexes, distances = find_k_nearest_neighbors(index, pcs, k)
     ## filter using slicer method to get mask
-    local_mask = mask_knn_local_diff_dist(torch.tensor(distances))
+    local_mask = mask_knn_local_diff_dist(
+        torch.tensor(distances), 
+        min_k=max(ceil(k/2),3)
+    )
     #for i in range(len(indexes)):
     #    if min(indexes[i])<0:
     #        print("mega bad -1:")
