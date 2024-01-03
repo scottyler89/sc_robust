@@ -3,6 +3,7 @@ import scanpy as sc
 import networkx as nx
 import matplotlib.pyplot as plt
 import numpy as np
+from sc_robust import robust
 
 # Set the seed for reproducibility
 np.random.seed(123456)
@@ -54,7 +55,6 @@ sc_adata = sc_adata[:, sc_adata.var.highly_variable]
 sc.pp.regress_out(sc_adata, ['total_counts', 'pct_counts_mt'])
 sc.pp.scale(sc_adata, max_value=10)
 sc.tl.pca(sc_adata, svd_solver='arpack')
-sc.pl.pca(sc_adata, color='HER2')
 sc.pp.neighbors(sc_adata, n_neighbors=10, n_pcs=40)
 
 # Calculate the umap
@@ -93,7 +93,7 @@ sc.pl.rank_genes_groups_heatmap(ro_adata, n_genes=3)
 ##
 
 # plot
-goi=["log1p_total_counts","EPCAM", "ERBB2", "XBP1", "HIF1A", "MYC", "EGFR", "VWF", "FCER1G", "LYZ"]
+goi=["log1p_total_counts","MALAT1","EPCAM", "ERBB2", "XBP1", "PARP1", "HIF1A", "MYC", "COL1A1", "EGFR", "VWF", "FCER1G", "LYZ"]
 #sc.pl.scatter(ro_adata, basis="ro_spring", color=["leiden"]+goi)
 
 
