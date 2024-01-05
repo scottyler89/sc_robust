@@ -15,6 +15,7 @@ class robust(object):
                  norm_function: Optional[str] = "cpm_log",
                  species: Optional[str] = "hsapiens",
                  initial_k: Optional[int] = None,
+                 do_plot: Optional[bool] = False,
                  seed = 123456) -> None:
         np.random.seed(123456)
         self.initial_k = initial_k
@@ -22,6 +23,7 @@ class robust(object):
         self.splits = splits
         self.pc_max = pc_max
         self.species = species
+        self.do_plot = do_plot
         if norm_function not in NORM:
             raise AssertionError("norm_function arg must be one of:"+", ".join(sorted(list(NORM.keys()))))
         self.norm_function = norm_function
@@ -82,7 +84,8 @@ class robust(object):
         self.train_pcs, self.val_pcs = find_pcs(
             self.train[:,self.train_feat_idxs], 
             self.val[:,self.val_feat_idxs], 
-            pc_max = self.pc_max)
+            pc_max = self.pc_max,
+            do_plot = self.do_plot)
         return
     #
     #

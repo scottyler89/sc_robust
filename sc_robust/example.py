@@ -64,15 +64,17 @@ sc.tl.leiden(sc_adata)
 
 ###########################################
 # Let the robust pipeline do it's thing...
-ro = robust(ro_adata)
+ro = robust(ro_adata, do_plot=True)
 ro.train_feature_df.index=ro_adata.var.index
 ro.val_feature_df.index=ro_adata.var.index
 # Make a spring embedding from it
 G = nx.from_scipy_sparse_array(ro.graph)
 # set the initial positions to the umaps (+noise), so that they line up more comparably
+starting_pos = -0.5+sc_adata.obsm["X_umap"]/np.max(-.05+sc_adata.obsm["X_umap"])
+starting_pos += np.random.normal(scale = 0.15, size=starting_pos.shape)
 pos = nx.spring_layout(G, pos={
     k:v for k, v in enumerate(
-    -0.5+sc_adata.obsm["X_umap"]/np.max(-.05+sc_adata.obsm["X_umap"]).tolist())
+    starting_pos.tolist())
     })
 pos_array = np.array([v for k, v in pos.items()])
 
@@ -93,13 +95,14 @@ sc.pl.rank_genes_groups_heatmap(ro_adata, n_genes=3)
 ##
 
 # plot
-goi=["log1p_total_counts","MALAT1","EPCAM", "ERBB2", "XBP1", "PARP1", "HIF1A", "MYC", "COL1A1", "EGFR", "VWF", "FCER1G", "LYZ"]
+#goi=["log1p_total_counts","MALAT1","EPCAM", "ERBB2", "XBP1", "PARP1", "HIF1A", "MYC", "COL1A1", "EGFR", "VWF", "GZMB", "FCER1G", "LYZ","S100A9", "LAG3"]
+goi=["EPCAM", "MYC", "EGFR", "VWF",  "FCER1G", "LYZ"]
 #sc.pl.scatter(ro_adata, basis="ro_spring", color=["leiden"]+goi)
 
 
-#sc.pl.scatter(ro_adata, basis="sc_umap", color=["leiden"], show=False)
-#sc.pl.scatter(ro_adata, basis="sc_spring", color=["leiden"], show=False)
-#sc.pl.scatter(ro_adata, basis="ro_spring", color=["sc_leiden"], show=False)
+sc.pl.scatter(ro_adata, basis="sc_umap", color=["leiden","sc_leiden"], show=False)
+sc.pl.scatter(ro_adata, basis="sc_spring", color=["leiden","sc_leiden"], show=False)
+sc.pl.scatter(ro_adata, basis="ro_spring", color=["leiden","sc_leiden"], show=False)
 
 sc.pl.scatter(ro_adata, basis="sc_umap", color=["sc_leiden"]+goi, show=False)
 #sc.pl.scatter(ro_adata, basis="sc_spring", color=["sc_leiden"]+goi, show=False)

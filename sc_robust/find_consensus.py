@@ -15,7 +15,8 @@ import warnings
 
 def find_pcs(train_mat: Any, 
              val_mat: Any,
-             pc_max: Optional[int] = 250):
+             pc_max: Optional[int] = 250,
+             do_plot: Optional[bool] = False):
     print("Decomposing training and validation matrices")
     ## Sanity check
     pc_max = min(pc_max,min(train_mat.shape), min(val_mat.shape))
@@ -26,7 +27,7 @@ def find_pcs(train_mat: Any,
     train_pc = tsvd(train_mat, npcs=pc_max)
     val_pc = tsvd(val_mat, npcs=pc_max)
     print("\tperforming empirical validation")
-    train_keep, val_keep = keep_correlated_pcs(train_pc, val_pc)
+    train_keep, val_keep = keep_correlated_pcs(train_pc, val_pc, do_plot=do_plot)
     train_pc = train_pc[:,train_keep]
     val_pc = val_pc[:,val_keep]
     print("\tfinal dimensionality:")
