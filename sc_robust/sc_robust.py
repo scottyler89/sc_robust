@@ -68,6 +68,8 @@ class robust(object):
         print("performing featue selection")
         if "gene_ids" in self.original_ad.var:
             gene_ids = self.original_ad.var["gene_ids"].tolist()
+        elif "gene_name" in self.original_ad.var:
+            gene_ids = self.original_ad.var["gene_name"].tolist()
         else:
             gene_ids = self.original_ad.var.index.tolist()
         self.train_feature_df = get_anti_cor_genes(self.train[subset_idxs,:].T,
