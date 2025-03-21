@@ -17,7 +17,7 @@ class robust(object):
                  initial_k: Optional[int] = None,
                  do_plot: Optional[bool] = False,
                  seed = 123456) -> None:
-        np.random.seed(123456)
+        np.random.seed(seed)
         self.initial_k = initial_k
         self.original_ad = in_ad
         self.splits = splits

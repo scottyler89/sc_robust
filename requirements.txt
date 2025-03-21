@@ -9,3 +9,4 @@ statsmodels
 networkx
 torch
 faiss-cpu
+anticor_features
