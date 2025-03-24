@@ -19,6 +19,9 @@ def find_pcs(train_mat: Any,
              do_plot: Optional[bool] = False):
     print("Decomposing training and validation matrices")
     ## Sanity check
+    print(f"train_mat.shape:{train_mat.shape}")
+    print(f"val_mat.shape:{val_mat.shape}")
+    print(f"pc_max:{pc_max}")
     pc_max = min(pc_max,min(train_mat.shape), min(val_mat.shape))
     # Keep only the genes that are expressed in both
     train_idxs = sorted(list(set(train_mat.indices)))
@@ -235,7 +238,7 @@ def distances_to_weights(temp_dist, eps = 1e-3):
 def indices_and_weights_to_graph(indices, weights, length):
     r_lin = np.zeros((length),dtype=np.int64)
     c_lin = np.zeros((length),dtype=np.int64)
-    w_lin = np.zeros((length),dtype=np.float16)
+    w_lin = np.zeros((length),dtype=np.float32)
     counter = 0
     for node in range(len(indices)):
         idxs = indices[node]

@@ -10,6 +10,7 @@ from .find_consensus import find_pcs, find_consensus_graph
 class robust(object):
     def __init__(self, 
                  in_ad: Any,
+                 gene_ids: Optional[List] = None,
                  splits: Optional[List] = [0.325,0.325,0.35],
                  pc_max: Optional[int] = 250,
                  norm_function: Optional[str] = "cpm_log",
@@ -18,6 +19,7 @@ class robust(object):
                  do_plot: Optional[bool] = False,
                  seed = 123456) -> None:
         np.random.seed(seed)
+        self.gene_ids = gene_ids
         self.initial_k = initial_k
         self.original_ad = in_ad
         self.splits = splits
@@ -66,18 +68,23 @@ class robust(object):
         if subset_idxs is None:
             subset_idxs = np.arange(self.train.shape[0])
         print("performing featue selection")
-        if "gene_ids" in self.original_ad.var:
-            gene_ids = self.original_ad.var["gene_ids"].tolist()
-        elif "gene_name" in self.original_ad.var:
-            gene_ids = self.original_ad.var["gene_name"].tolist()
+        if type(self.gene_ids)!=list:
+            if "gene_ids" in self.original_ad.var:
+                self.gene_ids = self.original_ad.var["gene_ids"].tolist()
+            elif "gene_name" in self.original_ad.var:
+                self.gene_ids = self.original_ad.var["gene_name"].tolist()
+            else:
+                self.gene_ids = self.original_ad.var.index.tolist()
         else:
-            gene_ids = self.original_ad.var.index.tolist()
+            # Otherwise, we assume the user has provided good IDs
+            pass
+        ## TODO: Handle case in which nothing was selected at FDR = 0.05 in train and/or val
         self.train_feature_df = get_anti_cor_genes(self.train[subset_idxs,:].T,
-                                              gene_ids,
+                                              self.gene_ids,
                                               species=self.species)
         self.train_feat_idxs = np.where(self.train_feature_df["selected"]==True)[0]
         self.val_feature_df = get_anti_cor_genes(self.val[subset_idxs,:].T,
-                                              gene_ids,
+                                              self.gene_ids,
                                               species=self.species)
         self.val_feat_idxs = np.where(self.val_feature_df["selected"]==True)[0]
     #
