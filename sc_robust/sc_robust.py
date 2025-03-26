@@ -13,7 +13,7 @@ class robust(object):
                  gene_ids: Optional[List] = None,
                  splits: Optional[List] = [0.325,0.325,0.35],
                  pc_max: Optional[int] = 250,
-                 norm_function: Optional[str] = "cpm_log",
+                 norm_function: Optional[str] = "pf_log",
                  species: Optional[str] = "hsapiens",
                  initial_k: Optional[int] = None,
                  do_plot: Optional[bool] = False,
