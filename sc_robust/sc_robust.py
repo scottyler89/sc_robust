@@ -49,6 +49,9 @@ class robust(object):
         self.train = self.train.T
         self.val = self.val.T
         self.test = self.test.T
+        self.train_counts = self.train.copy()
+        self.val_counts = self.val.copy()
+        self.test_counts = self.test.copy()
         return
     #
     #
@@ -105,4 +108,7 @@ class robust(object):
             self.initial_k, 
             cosine = True, use_gpu = False)
         return
+
+
+
 

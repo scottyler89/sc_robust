@@ -244,15 +244,17 @@ def indices_and_weights_to_graph(indices, weights, length):
         idxs = indices[node]
         ws = weights[node]
         for i, w in zip(idxs, ws):
-            r_lin[counter]=node
-            c_lin[counter]=i
-            w_lin[counter]=w
-            if i<0:
-                print("terrible badness")
-                print(idxs)
-                print(ws)
-                print(poo)
-            counter+=1
+            ## exclude self connections
+            if node != i:
+                r_lin[counter]=node
+                c_lin[counter]=i
+                w_lin[counter]=w
+                if i<0:
+                    print("terrible badness")
+                    print(idxs)
+                    print(ws)
+                    print(poo)
+                counter+=1
     return coo_matrix((w_lin,(r_lin, c_lin)))
 
 
