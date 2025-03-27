@@ -12,3 +12,4 @@ faiss-cpu
 anticor_features
 igraph
 leidenalg
+pymetis
