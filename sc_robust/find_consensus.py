@@ -235,6 +235,65 @@ def distances_to_weights(temp_dist, eps = 1e-3):
     return(temp_dist)
 
 
+def process_idx_dist_mask_to_g(indexes, distances, local_mask):
+    """
+    Process the input indexes, distances, and local_mask arrays to filter out unwanted
+    connections, compute weights, and prepare the data for building a sparse graph.
+    This version uses PyTorch tensors and returns a torch.sparse_coo_tensor.
+    
+    Parameters:
+        indexes (list): A list of arrays/lists or torch tensors, each containing
+            neighbor indices for each node.
+        distances (list): A list of arrays/lists or torch tensors, each containing
+            the distances corresponding to the neighbor indices.
+        local_mask (list): A list of boolean arrays/lists or torch tensors with the
+            same shapes as the corresponding indexes and distances. True values indicate
+            the connection should be kept.
+    
+    Returns:
+        torch.sparse_coo_tensor: A sparse graph with shape (n_nodes, n_nodes).
+    """
+    processed_indices = []
+    processed_weights = []
+    n_edges_per_node = []
+    
+    for idx, dist, mask in zip(indexes, distances, local_mask):
+        # Convert to torch tensors if they aren't already
+        if not isinstance(idx, torch.Tensor):
+            idx_tensor = torch.tensor(idx, dtype=torch.int64)
+        else:
+            idx_tensor = idx
+        
+        if not isinstance(dist, torch.Tensor):
+            dist_tensor = torch.tensor(dist, dtype=torch.float32)
+        else:
+            dist_tensor = dist
+        
+        if not isinstance(mask, torch.Tensor):
+            mask_tensor = torch.tensor(mask, dtype=torch.bool)
+        else:
+            mask_tensor = mask
+        
+        # Apply the local mask to filter indices and distances
+        filtered_idx = idx_tensor[mask_tensor]
+        filtered_dist = dist_tensor[mask_tensor]
+        
+        # Compute weights from the filtered distances.
+        # Assumes distances_to_weights is a torch-compatible function.
+        weights = distances_to_weights(filtered_dist)
+        
+        processed_indices.append(filtered_idx)
+        processed_weights.append(weights)
+        n_edges_per_node.append(filtered_idx.shape[0])
+    
+    # Total number of edges across all nodes
+    total_edges = sum(n_edges_per_node)
+    
+    # Create and return the sparse graph using the helper function.
+    graph = indices_and_weights_to_graph(processed_indices, processed_weights, total_edges)
+    return graph
+
+
 def indices_and_weights_to_graph(indices, weights, length):
     r_lin = np.zeros((length),dtype=np.int64)
     c_lin = np.zeros((length),dtype=np.int64)
@@ -358,7 +417,7 @@ def merge_knns(train_index, train_distance, train_mask, val_index, val_distance,
 ############################################################################
 
 
-def find_one_graph(pcs, k, cosine=True, use_gpu = False):
+def find_one_graph(pcs, k=None, cosine=True, use_gpu = False):
     if k is None:
         # Default to the log of the number of observations
         # The mi

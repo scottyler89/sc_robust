@@ -250,3 +250,34 @@ def prep_sample_pseudobulk(in_graph, X, cells_per_pb=10, sample_vect=None, clust
     annotation_df = annotation_df.sort_values("pb_id")
     annotation_df.index = annotation_df["pb_id"].tolist()
     return pb_exprs, annotation_df
+
+
+
+def filter_edges_within_clusters(adj: coo_matrix, clusters: list) -> coo_matrix:
+    """
+    Filters out the edges in a COO-format sparse matrix (weighted adjacency matrix)
+    that connect nodes from different clusters. Returns a new COO matrix retaining
+    only the edges within the same cluster.
+
+    Parameters:
+        adj (coo_matrix): The input sparse adjacency matrix.
+        clusters (list): A list of cluster labels corresponding to each node in the matrix.
+    
+    Returns:
+        coo_matrix: A new sparse COO matrix with edges only between nodes of the same cluster.
+    """
+    # Convert clusters to a numpy array for vectorized indexing
+    clusters_arr = np.array(clusters)
+    # Extract row and column indices along with the data from the COO matrix
+    rows = adj.row
+    cols = adj.col
+    data = adj.data
+    # Create a boolean mask where True indicates nodes from the same cluster
+    same_cluster_mask = clusters_arr[rows] == clusters_arr[cols]
+    # Use the mask to filter the rows, columns, and data
+    new_rows = rows[same_cluster_mask]
+    new_cols = cols[same_cluster_mask]
+    new_data = data[same_cluster_mask]    
+    # Return a new COO matrix containing only the intra-cluster edges
+    return coo_mat((new_data, (new_rows, new_cols)), shape=adj.shape)
+
