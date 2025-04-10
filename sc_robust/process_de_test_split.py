@@ -187,16 +187,19 @@ def prep_sample_pseudobulk(in_graph, X, cells_per_pb=10, sample_vect=None, clust
     # Precompute per-cell total counts (used for weighting coordinates and cell meta).
     cell_total_counts = X.sum(axis=1)  # shape: (n_cells,)
     
+    pb_ids = []
     pb_expr_list = []
     annotation_list = []
     
     # Iterate over partitions.
     for pb_id, cell_indices in partitions.items():
+        pb_ids.append(pb_id)
         cell_indices = np.array(cell_indices)
         cell_n = len(cell_indices)
         
         # Sum the expression counts for these cells.
         pb_expr = X[cell_indices, :].sum(axis=0)
+        #pb_expr = np.asarray(X[cell_indices, :]).sum(axis=0).ravel()
         pb_expr_list.append(pb_expr)
         
         # Total count sum for this partition.
@@ -241,14 +244,16 @@ def prep_sample_pseudobulk(in_graph, X, cells_per_pb=10, sample_vect=None, clust
     # Create pseudobulk expression matrix.
     pb_exprs_arr = np.vstack(pb_expr_list)
     if gene_ids is not None:
-        pb_exprs = pd.DataFrame(pb_exprs_arr, index=sorted(partitions.keys()), columns=gene_ids)
+        pb_exprs = pd.DataFrame(pb_exprs_arr, index=pb_ids, columns=gene_ids)
     else:
         pb_exprs = pb_exprs_arr
     
     annotation_df = pd.DataFrame(annotation_list)
     annotation_df[annotation_df.isna()]=0.0
-    annotation_df = annotation_df.sort_values("pb_id")
     annotation_df.index = annotation_df["pb_id"].tolist()
+    sorted_pb_ids = sorted(annotation_df.index.tolist())
+    pb_exprs = pb_exprs.loc[sorted_pb_ids,:]
+    annotation_df = annotation_df.loc[sorted_pb_ids,:]
     return pb_exprs, annotation_df
 
 
@@ -279,5 +284,7 @@ def filter_edges_within_clusters(adj: coo_matrix, clusters: list) -> coo_matrix:
     new_cols = cols[same_cluster_mask]
     new_data = data[same_cluster_mask]    
     # Return a new COO matrix containing only the intra-cluster edges
-    return coo_mat((new_data, (new_rows, new_cols)), shape=adj.shape)
+    return coo_matrix((new_data, (new_rows, new_cols)), shape=adj.shape)
+
+
 
