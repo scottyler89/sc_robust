@@ -1,3 +1,4 @@
+import dill
 import anndata as ad
 from copy import copy, deepcopy
 from typing import List, Any, Optional
@@ -35,6 +36,14 @@ class robust(object):
         self.find_reproducible_pcs()
         self.get_consensus_graph()
         return
+    #
+    #
+    def save(f):
+        """
+        Save the robust object to a file using dill.
+        """
+        with open(f, 'wb') as file:
+            dill.dump(self, file)
     #
     #
     def do_splits(self):

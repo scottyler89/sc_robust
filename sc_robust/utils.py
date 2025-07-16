@@ -75,3 +75,10 @@ def perform_leiden_clustering(coo_mat, resolution_parameter=1.0):
     return clusters, partition, labels
 
 
+def load_ro(f):
+    """
+    Load a robust object from a file using dill.
+    """
+    with open(f, 'rb') as file:
+        ro = dill.load(file)
+    return ro
