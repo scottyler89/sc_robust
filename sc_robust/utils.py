@@ -4,6 +4,9 @@ import scipy.sparse as sp
 import igraph as ig
 import leidenalg
 
+from .find_consensus import find_one_graph, process_idx_dist_mask_to_g
+from .process_de_test_split import make_symmetric
+
 
 
 #def dynamic_fs_df_reprocessing(fs_df):
@@ -73,6 +76,67 @@ def perform_leiden_clustering(coo_mat, resolution_parameter=1.0):
             labels[node] = cluster_idx
     
     return clusters, partition, labels
+
+
+def build_single_graph(embedding_or_X: np.ndarray,
+                       k: int = None,
+                       metric: str = 'cosine',
+                       min_k: int = None,
+                       symmetrize: str = 'none',
+                       use_gpu: bool = False):
+    """
+    Build a weighted KNN graph from an embedding or feature matrix using the
+    existing KNN + local masking + linear weighting pipeline.
+
+    Parameters:
+      embedding_or_X: Array-like of shape (n_samples, n_features) representing the embedding or features.
+      k: Optional number of neighbors; defaults to round(log(n)).
+      metric: 'cosine' (default), 'l2', or 'ip'.
+      min_k: Optional override for the masking's minimum kept neighbors (if None, uses default logic).
+      symmetrize: 'none' | 'max' | 'avg' to optionally symmetrize the graph.
+      use_gpu: Whether to use FAISS GPU if available.
+
+    Returns:
+      scipy.sparse.coo_matrix: Weighted adjacency graph.
+    """
+    # Get row-wise neighbors and mask
+    indexes, distances, local_mask = find_one_graph(
+        embedding_or_X,
+        k=k,
+        metric=metric,
+        use_gpu=use_gpu,
+    )
+    # TODO: plumb min_k into masking if needed in future phases
+    graph = process_idx_dist_mask_to_g(indexes, distances, local_mask)
+    if symmetrize == 'max':
+        graph = make_symmetric(graph)
+    elif symmetrize == 'avg':
+        csr = graph.tocsr()
+        graph = ((csr + csr.transpose()) * 0.5).tocoo()
+    return graph
+
+
+def single_graph_and_leiden(embedding_or_X: np.ndarray,
+                            k: int = None,
+                            metric: str = 'cosine',
+                            resolution: float = 1.0,
+                            symmetrize: str = 'none',
+                            use_gpu: bool = False):
+    """
+    Convenience wrapper to build a single graph and run Leiden clustering.
+
+    Returns:
+      Tuple[scipy.sparse.coo_matrix, np.ndarray]: the graph and integer labels per node.
+    """
+    graph = build_single_graph(
+        embedding_or_X,
+        k=k,
+        metric=metric,
+        symmetrize=symmetrize,
+        use_gpu=use_gpu,
+    )
+    _, _, labels = perform_leiden_clustering(graph, resolution_parameter=resolution)
+    return graph, labels
 
 
 def load_ro(f):

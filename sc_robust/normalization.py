@@ -86,6 +86,17 @@ def norm_log(mtx):
     return np.log1p(mtx)
 
 def norm_pf_log(mtx):
+    """Per-feature depth-normalize then log1p-transform (pf -> log1p).
+
+    Given a counts matrix `mtx` (cells x genes), first rescales rows so that
+    per-cell totals are equal on average, then applies `log1p`.
+
+    Parameters:
+      mtx: Array-like or sparse counts (cells x genes).
+
+    Returns:
+      Transformed matrix of same shape as input.
+    """
     pf_log = np.log1p(do_pf(mtx))
     return pf_log
 
@@ -117,6 +128,5 @@ NORM = {
     "cp10k_log": norm_cp10k_log,
     "sqrt": norm_sqrt
 }
-
 
 

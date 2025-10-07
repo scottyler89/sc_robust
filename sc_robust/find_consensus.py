@@ -12,16 +12,21 @@ from anticor_features.anticor_stats import no_p_pear as pearson
 from typing import Optional, Any
 import warnings
 
+# Gated debug printing for this module
+DEBUG = False
+
 
 def find_pcs(train_mat: Any, 
              val_mat: Any,
              pc_max: Optional[int] = 250,
              do_plot: Optional[bool] = False):
-    print("Decomposing training and validation matrices")
+    if DEBUG:
+        print("Decomposing training and validation matrices")
     ## Sanity check
-    print(f"train_mat.shape:{train_mat.shape}")
-    print(f"val_mat.shape:{val_mat.shape}")
-    print(f"pc_max:{pc_max}")
+    if DEBUG:
+        print(f"train_mat.shape:{train_mat.shape}")
+        print(f"val_mat.shape:{val_mat.shape}")
+        print(f"pc_max:{pc_max}")
     pc_max = min(pc_max,min(train_mat.shape), min(val_mat.shape))
     # Keep only the genes that are expressed in both
     train_idxs = sorted(list(set(train_mat.indices)))
@@ -29,22 +34,33 @@ def find_pcs(train_mat: Any,
     both_idxs = [idx for idx in val_idxs if idx in train_idxs]
     train_pc = tsvd(train_mat, npcs=pc_max)
     val_pc = tsvd(val_mat, npcs=pc_max)
-    print("\tperforming empirical validation")
+    if DEBUG:
+        print("\tperforming empirical validation")
     train_keep, val_keep = keep_correlated_pcs(train_pc, val_pc, do_plot=do_plot)
     train_pc = train_pc[:,train_keep]
     val_pc = val_pc[:,val_keep]
-    print("\tfinal dimensionality:")
-    print("\t\ttraining:",train_pc.shape)
-    print("\t\tvalidation:",val_pc.shape)
+    if DEBUG:
+        print("\tfinal dimensionality:")
+        print("\t\ttraining:",train_pc.shape)
+        print("\t\tvalidation:",val_pc.shape)
     return train_pc, val_pc
 
 
 def tsvd(temp_mat, npcs=250):
-    pca = TruncatedSVD(n_components=npcs,n_iter=7, random_state=42)
+    """Compute truncated SVD components for a matrix (dense or sparse).
+
+    Parameters:
+      temp_mat: Array-like or sparse matrix (samples x features).
+      npcs: Number of components to compute (default 250).
+
+    Returns:
+      np.ndarray of shape (n_samples, npcs) with NaNs replaced by zeros.
+    """
+    pca = TruncatedSVD(n_components=npcs, n_iter=7, random_state=42)
     out_pcs = pca.fit_transform(temp_mat)
-    # Not sure why there are some nans..
-    out_pcs[np.isnan(out_pcs)]=0.
-    return(out_pcs)
+    # Guard against rare NaNs
+    out_pcs[np.isnan(out_pcs)] = 0.0
+    return out_pcs
 
 
 def keep_correlated_pcs(train_pc, val_pc, alpha=0.01, n_boot = 50, do_plot = False):
@@ -91,6 +107,19 @@ def keep_correlated_pcs(train_pc, val_pc, alpha=0.01, n_boot = 50, do_plot = Fal
 ################################################
 ## Find the graphs
 def find_consensus_graph(train_pcs, val_pcs, initial_k, cosine = True, use_gpu = False):
+    """Build a consensus graph from train/val PCs via KNN, masking, and merging.
+
+    Parameters:
+      train_pcs: Array-like (n_cells, n_dims) for the training split PCs/embedding.
+      val_pcs: Array-like (n_cells, n_dims) for the validation split PCs/embedding.
+      initial_k: Int for initial KNN size; defaults to round(log(n)) when None.
+      cosine: If True, use cosine similarity (inner product on normalized rows).
+      use_gpu: If True and FAISS GPU is available, perform GPU search.
+
+    Returns:
+      (indices, distances, weights, graph): lists of merged neighbors/distances/weights
+      per node, and a weighted COO adjacency matrix.
+    """
     train_index, train_distance, train_mask = find_one_graph(train_pcs, initial_k, cosine = cosine, use_gpu = use_gpu)
     val_index, val_distance, val_mask = find_one_graph(val_pcs, initial_k, cosine = cosine, use_gpu = use_gpu)
     merged_indices, merged_distances, merged_weights, merged_graph = merge_knns(train_index, train_distance, train_mask, val_index, val_distance, val_mask)
@@ -125,18 +154,8 @@ def find_common_indices(train_indices, val_indices):
     all_unique = []
     for t_indices, v_indices in zip(train_indices, val_indices):
         temp_common, temp_unique = get_intersection(t_indices, v_indices)
-        if min(temp_common)<0:
-            print("terrible badness2:")
-            print(t_indices, v_indices)
-            print(temp_common)
-            print(temp_unique)
-            print(poo)
-        else:
-            pass
-            #print("that good good:")
-            #print(t_indices, v_indices)
-            #print(temp_common)
-            #print(temp_unique)
+        if temp_common.numel() > 0 and torch.min(temp_common) < 0:
+            raise ValueError("Negative neighbor index detected during intersection; check K against dataset size.")
         all_common.append(temp_common)
         all_unique.append(temp_unique)
     return all_common, all_unique
@@ -220,6 +239,12 @@ def compute_average_unique_distances(unique_index, ref_index, ref_distance, othe
 ########################
 
 def distances_to_weights(temp_dist, eps = 1e-3):
+    """Convert a sorted per-node distance vector to weights via linear rescaling.
+
+    Assumes the first entry is the self-distance; leaves it at weight 1.
+    Non-self distances are shifted to start near 0, scaled by the max, inverted,
+    and shifted to (0,1], yielding larger weights for nearer neighbors.
+    """
     # The first is self connection, so skip it
     # It's also already sorted, so the minimum non-self is at 1
     # and the maximum is the final entry
@@ -251,7 +276,7 @@ def process_idx_dist_mask_to_g(indexes, distances, local_mask):
             the connection should be kept.
     
     Returns:
-        torch.sparse_coo_tensor: A sparse graph with shape (n_nodes, n_nodes).
+        scipy.sparse.coo_matrix: Weighted adjacency with shape (n_nodes, n_nodes).
     """
     processed_indices = []
     processed_weights = []
@@ -295,9 +320,14 @@ def process_idx_dist_mask_to_g(indexes, distances, local_mask):
 
 
 def indices_and_weights_to_graph(indices, weights, length):
-    r_lin = np.zeros((length),dtype=np.int64)
-    c_lin = np.zeros((length),dtype=np.int64)
-    w_lin = np.zeros((length),dtype=np.float32)
+    """Assemble a COO adjacency from per-node neighbor indices and weights.
+
+    Skips self-edges and truncates preallocated arrays to the actual edge count
+    to avoid zero-initialized artifacts.
+    """
+    r_lin = np.zeros((length), dtype=np.int64)
+    c_lin = np.zeros((length), dtype=np.int64)
+    w_lin = np.zeros((length), dtype=np.float32)
     counter = 0
     for node in range(len(indices)):
         idxs = indices[node]
@@ -308,12 +338,13 @@ def indices_and_weights_to_graph(indices, weights, length):
                 r_lin[counter]=node
                 c_lin[counter]=i
                 w_lin[counter]=w
-                if i<0:
-                    print("terrible badness")
-                    print(idxs)
-                    print(ws)
-                    print(poo)
+                if i < 0:
+                    raise ValueError("Negative neighbor index encountered while building graph.")
                 counter+=1
+    # Truncate arrays to actual edge count to avoid zero-weight artifacts
+    r_lin = r_lin[:counter]
+    c_lin = c_lin[:counter]
+    w_lin = w_lin[:counter]
     return coo_matrix((w_lin,(r_lin, c_lin)))
 
 
@@ -323,6 +354,7 @@ def combine_and_sort_distances(common_edges,
                                avg_common_distances, 
                                avg_unique_train_distances, 
                                avg_unique_val_distances):
+    """Combine per-node common/unique edges, sort by merged distances, and weight."""
     n_edges_per_node = []
     merged_index_list = []
     merged_dist_list = []
@@ -334,12 +366,8 @@ def combine_and_sort_distances(common_edges,
                         avg_unique_train_distances, 
                         avg_unique_val_distances):
         temp_idx = torch.cat((ci, ti, vi))
-        if min(temp_idx)<0:
-            print("terrible badness1:")
-            print(ci)
-            print(ti)
-            print(vi)
-            print(poo)
+        if temp_idx.numel() > 0 and torch.min(temp_idx) < 0:
+            raise ValueError("Negative neighbor index encountered while merging KNNs.")
         temp_dist = torch.cat((cd, td, vd))
         # resort based on the merged distances
         new_order = torch.argsort(temp_dist)
@@ -352,8 +380,9 @@ def combine_and_sort_distances(common_edges,
         # Add to the running total so we know how big to make the destination matrices
         n_edges_per_node.append(temp_idx.shape[0])
     #n_nodes = common_edges.shape[0]
-    print("min edges found were:",min(n_edges_per_node))
-    print("maximum edges found were:",max(n_edges_per_node))
+    if DEBUG:
+        print("min edges found were:",min(n_edges_per_node))
+        print("maximum edges found were:",max(n_edges_per_node))
     merged_graph = indices_and_weights_to_graph(merged_index_list, merged_weight_list, sum(n_edges_per_node))
     ## Now re-collate them into their final destination format
     #merged_indices = torch.zeros((n_nodes,max_edges),dtype=torch.int64)
@@ -364,9 +393,14 @@ def combine_and_sort_distances(common_edges,
 
 
 def fix_edge(cur_index, cur_distance, cur_mask, ref_index, ref_distance, ref_mask):
+    """Replace invalid (-1) neighbor rows using the reference split.
+
+    This mitigates rare SVD/FAISS edge cases where NaNs propagate and yield -1 indices.
+    """
     for i in range(cur_index.shape[0]):
         if min(cur_index[i])<0:
-            print("found weird edge case:",i)
+            if DEBUG:
+                print("found weird edge case:",i)
             # This means that svd failed and propogated through to nearest neighbor
             # which returns -1s if there are nans
             cur_index[i]=ref_index[i]
@@ -376,17 +410,21 @@ def fix_edge(cur_index, cur_distance, cur_mask, ref_index, ref_distance, ref_mas
 
 
 def merge_knns(train_index, train_distance, train_mask, val_index, val_distance, val_mask):
+    """Merge train/val KNNs by averaging common edges and penalizing uniques.
+
+    Unique edges are averaged with the other split's max distance to downweight
+    edges not reproduced across splits.
+    """
     ## first find and fix edge cases where svd failed & copy results from other split
     train_index, train_distance, train_mask = fix_edge(train_index, train_distance, train_mask, 
                                                        val_index, val_distance, val_mask)
     val_index, val_distance, val_mask = fix_edge(val_index, val_distance, val_mask,
                                                  train_index, train_distance, train_mask)
-    print("\tmerging the knns")
+    if DEBUG:
+        print("\tmerging the knns")
     for i in range(len(val_index)):
-        if min(val_index[i])<0:
-            print("mega bad0:")
-            print(val_index[i])
-            print(poo)
+        if torch.min(val_index[i]) < 0:
+            raise ValueError("Negative index in validation KNN; ensure k <= n and inputs have no NaNs.")
     num_observations, k = train_index.shape
     max_train_distance = calculate_maximum_distances(train_distance, train_mask)
     max_val_distance = calculate_maximum_distances(val_distance, val_mask)
@@ -417,17 +455,29 @@ def merge_knns(train_index, train_distance, train_mask, val_index, val_distance,
 ############################################################################
 
 
-def find_one_graph(pcs, k=None, cosine=True, use_gpu = False):
+def find_one_graph(pcs, k=None, metric: Optional[str] = None, cosine: bool = True, use_gpu: bool = False):
+    """Find per-row KNN neighbors, distances, and a local-difference mask.
+
+    Parameters:
+      pcs: Array-like (n_samples, n_dims).
+      k: Optional int; defaults to round(log(n)), capped by 200 and n.
+      metric: 'cosine' | 'l2' | 'ip'. If None, falls back to `cosine` flag.
+      cosine: Legacy switch for backward compatibility (ignored if `metric` given).
+      use_gpu: Use FAISS GPU if available.
+
+    Returns:
+      (indices, distances, mask): torch tensors for neighbors, distances, and kept edges.
+    """
     if k is None:
         # Default to the log of the number of observations
-        # The mi
-        k= int(round(np.log(pcs.shape[0]),
-                     0)
-               )
-    # bound k between 20 and 200, but follow the above heuristic or user guidance otherwise
-    k = min(k, 200)
-    index = get_faiss_idx(pcs, cosine = cosine, use_gpu = use_gpu)
-    indexes, distances = find_k_nearest_neighbors(index, pcs, k)
+        k= int(round(np.log(pcs.shape[0]), 0))
+    # bound k between 20 and 200, and by n
+    n = pcs.shape[0]
+    k = min(k, 200, n)
+    # Determine metric for backward compatibility: cosine flag controls default unless metric provided
+    chosen_metric = metric if metric is not None else ("cosine" if cosine else "ip")
+    index = get_faiss_idx(pcs, metric=chosen_metric, cosine=cosine, use_gpu=use_gpu)
+    indexes, distances = find_k_nearest_neighbors(index, pcs, k, metric=chosen_metric, cosine=cosine)
     ## filter using slicer method to get mask
     local_mask = mask_knn_local_diff_dist(
         torch.tensor(distances), 
@@ -440,30 +490,69 @@ def find_one_graph(pcs, k=None, cosine=True, use_gpu = False):
     return(indexes, distances, local_mask) 
 
 
-def get_faiss_idx(vectors, cosine=True, use_gpu = False):
-    ## Normalize the PCs to make it cosine distance
-    if cosine:
-        vectors /= np.linalg.norm(vectors, axis=1, keepdims=True)
-    dimension = vectors.shape[1]
-    index = faiss.IndexFlatIP(dimension)  # Inner Product (IP) for cosine similarity
+def get_faiss_idx(vectors, metric: Optional[str] = None, cosine: bool = True, use_gpu: bool = False):
+    """Create a FAISS IndexFlatIP for cosine/dot-product search.
+
+    When `cosine=True`, rows are L2-normalized with zero-norm rows guarded.
+    FAISS expects `np.float32` arrays; torch tensors are converted.
+    """
+    # Ensure numpy float32 for FAISS
+    if isinstance(vectors, torch.Tensor):
+        vec = vectors.detach().cpu().numpy().astype(np.float32)
+    else:
+        vec = np.asarray(vectors, dtype=np.float32)
+    chosen_metric = metric if metric is not None else ("cosine" if cosine else "ip")
+    if chosen_metric == "cosine":
+        norms = np.linalg.norm(vec, axis=1, keepdims=True)
+        safe = norms.copy()
+        safe[safe == 0] = 1.0
+        vec = vec / safe
+    dimension = vec.shape[1]
+    if chosen_metric == "l2":
+        index = faiss.IndexFlatL2(dimension)
+    else:
+        # 'cosine' or 'ip' both use inner product index
+        index = faiss.IndexFlatIP(dimension)
     if use_gpu:
-        # Using GPU resources if available and desired
         index = faiss.index_cpu_to_all_gpus(index)
-    index.add(torch.tensor(vectors))
-    return(index)
+    index.add(vec)
+    return index
 
 
-def find_k_nearest_neighbors(index, vectors, k):
-    """ Find k-nearest neighbors for each vector. """
-    cos_sim, indices = index.search(vectors, k)
-    count=0
-    ## 1-cosine similarity is cosine distance
-    return torch.tensor(indices), 1-torch.tensor(cos_sim)
+def find_k_nearest_neighbors(index, vectors, k, metric: Optional[str] = None, cosine: bool = True):
+    """Find k-nearest neighbors via FAISS; returns indices and distances.
+
+    Distances depend on the metric:
+      - 'cosine': 1 - cosine_similarity
+      - 'l2': squared Euclidean distance returned by FAISS
+      - 'ip': negative inner product (pseudo-distance)
+    """
+    if isinstance(vectors, torch.Tensor):
+        vec = vectors.detach().cpu().numpy().astype(np.float32)
+    else:
+        vec = np.asarray(vectors, dtype=np.float32)
+    chosen_metric = metric if metric is not None else ("cosine" if cosine else "ip")
+    if chosen_metric == "l2":
+        # FAISS L2 returns squared L2 distances directly
+        dists, indices = index.search(vec, k)
+        return torch.tensor(indices, dtype=torch.int64), torch.tensor(dists, dtype=torch.float32)
+    else:
+        sims, indices = index.search(vec, k)
+        if chosen_metric == "cosine":
+            dists = 1.0 - sims
+        else:  # 'ip' raw inner product -> pseudo-distance
+            dists = -sims
+        return torch.tensor(indices, dtype=torch.int64), torch.tensor(dists, dtype=torch.float32)
 
 
 ##############################################################
 # KNN masking functions
 def masked_mad(input_tensor, mask, epsilon = 1e-8):
+    """Compute median and MAD per-row with a boolean mask (approximate).
+
+    Note: uses element-wise multiplication by the mask; for very sparse masks,
+    medians may skew toward 0. Good enough for relative thresholding of diffs.
+    """
     # Make sure the mask is a bool tensor
     mask = mask.bool()
     # Apply mask
@@ -478,6 +567,7 @@ def masked_mad(input_tensor, mask, epsilon = 1e-8):
 
 
 def get_mad_ratio(input_tensor, mask):
+    """Standardize input by row-wise (masked) median/MAD for robust cutoffing."""
     med, mad = masked_mad(input_tensor, mask)
     return (input_tensor - med)/mad
 
@@ -513,10 +603,11 @@ def mask_knn_local_diff_dist(dists, prior_mask=None, cutoff_threshold=3, min_k=1
     """
     if prior_mask is None:
         prior_mask = torch.ones_like(dists)
-    print("dists.shape:",dists.shape)
-    print("min_k:",min_k)
-    print("mean number connections BEFORE local masking:")
-    print(torch.mean(torch.sum(prior_mask.float(), dim=1)))
+    if DEBUG:
+        print("dists.shape:",dists.shape)
+        print("min_k:",min_k)
+        print("mean number connections BEFORE local masking:")
+        print(torch.mean(torch.sum(prior_mask.float(), dim=1)))
     # Create a boolean tensor with ones (True) of the same shape as dists
     diff_mask = torch.ones_like(dists, dtype=torch.bool)
     # Calculate the discrete difference of the relevant slice of dists
@@ -550,10 +641,11 @@ def mask_knn_local_diff_dist(dists, prior_mask=None, cutoff_threshold=3, min_k=1
     diff_mask[:, (min_k+1):] = temp_diff_mask_cutoff
     #print("diff_mask after local diff masking")
     #print(diff_mask)
-    print("mean number connections after local masking:")
-    print(torch.mean(torch.sum(diff_mask.float(), dim=1)))
-    print("min number connections after local masking:")
-    print(torch.min(torch.sum(diff_mask.float(), dim=1)))
+    if DEBUG:
+        print("mean number connections after local masking:")
+        print(torch.mean(torch.sum(diff_mask.float(), dim=1)))
+        print("min number connections after local masking:")
+        print(torch.min(torch.sum(diff_mask.float(), dim=1)))
     return diff_mask
 
 
@@ -561,5 +653,3 @@ def mask_knn_local_diff_dist(dists, prior_mask=None, cutoff_threshold=3, min_k=1
 
 
 #find_consensus_graph(ro.train_pc, ro.val_pc, ro.initial_k, cosine = True, use_gpu = False)
-
-

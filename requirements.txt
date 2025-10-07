@@ -13,3 +13,4 @@ anticor_features
 igraph
 leidenalg
 pymetis
+dill

@@ -17,7 +17,7 @@ script_list=[]
 
 setuptools.setup(
      name='sc_robust',
-     version='0.0.99',
+     version='0.1.01',
      author="Scott Tyler",
      author_email="scottyler89@gmail.com",
      description="A statistically robust pipeline for building cell-cell graphs from single cell RNAseq",
