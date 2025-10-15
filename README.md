@@ -32,6 +32,45 @@ Optional/adjacent tools
 Python compatibility
 - Tested on Python 3.10+. Other versions may work, but 3.10 is recommended.
 
+QC Workflow Example
+-------------------
+
+The repository ships a reference quality-control scaffold in `sc_robust/qc.py`. It
+computes mitochondrial / ribosomal / lncRNA metrics, derives heuristic
+thresholds, and groups cells into interpretable QC buckets. A minimal example:
+
+```
+from pathlib import Path
+import anndata as ad
+from sc_robust.qc import quantify_qc_metrics, determine_qc_thresholds, classify_qc_categories
+
+adata = ad.read_h5ad("data/anndata.h5ad")
+
+# Phase 1 – quantify QC metrics (optionally emits plots)
+quant_res = quantify_qc_metrics(
+    adata,
+    plotting_dir=Path("figures/qc"),
+    make_plots=True,
+    plot_annotation_keys=("sample",),  # columns from `adata.obs` to color plots
+)
+
+# Merge the QC metrics back into the working AnnData
+qc_df = quant_res.to_dataframe(prefix="qc_")
+adata.obs = adata.obs.join(qc_df, how="left")
+
+# Phase 2 – derive thresholds and classify cells
+thresholds = determine_qc_thresholds(quant_res.adata)
+summary = classify_qc_categories(quant_res.adata, thresholds)
+
+# Filter to high-quality cells
+filtered = quant_res.adata[quant_res.adata.obs["qc_keep"].to_numpy()].copy()
+print(summary)
+print(filtered)
+```
+
+See `sc_robust/qc.py` for a ready-to-run `perform_qc_and_filtering` orchestration
+function that combines these steps and materializes plots.
+
 Single-Graph Usage (No Splits)
 ------------------------------
 

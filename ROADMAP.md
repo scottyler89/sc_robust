@@ -164,3 +164,37 @@ Acceptance Matrix (Abbreviated)
 - Phase 2: Single-graph utility builds and clusters; symmetrization works.
 - Phase 4: Sanity tests for neighbors, masking, weights, and timing pass.
 - Phase 5: Docs and examples runnable with existing requirements.
+
+
+Future Expansion — Differential Expression & Pathways
+=====================================================
+
+Phase 1 — Shared Assets & Infrastructure
+----------------------------------------
+- [x] Package pathway GMT references under `sc_robust/data/pathways/` (or stub loader if licensing blocks distribution) and expose a `load_pathway_library(library: str)` helper with documented fallbacks.
+- [x] Define common dataclasses (e.g., `PseudobulkResult`, `DEAnalysisResult`, `PathwayEnrichmentResult`) to standardize outputs and capture metadata (seeds, parameters, file locations).
+- [x] Stand up a plotting utilities module scaffold (`sc_robust/de/plots.py`) that will host shared styling knobs for downstream figures.
+
+Phase 2 — Pseudobulk Builders
+-----------------------------
+- [x] Implement `build_pseudobulk` in `sc_robust/de/pseudobulk.py` wrapping existing `prep_sample_pseudobulk`, with `mode="within_cluster"` (pre-filter edges via `filter_edges_within_clusters`, omit intercept columns) and `mode="topology"` (weight cluster contributions by per-pseudobulk count proportions).
+- [x] Support both discrete (`cluster_key`) and continuous (`topology`/graph) inputs, propagating sample/cluster annotations, coordinates, and reproducibility seeds into the result dataclass.
+- [x] Add lightweight plotting helpers for pseudobulk diagnostics (UMAP scatter colored by total counts or gene abundance).
+
+Phase 3 — Differential Expression Pipeline
+------------------------------------------
+- [ ] Create `sc_robust/de/differential_expression.py` utilities to prepare `DeseqDataSet` objects (guard imports with informative errors), including default cell-means design (no intercept in within-cluster mode) and topology-aware design matrices.
+- [ ] Implement cluster-vs-all and pairwise DE routines that return structured results, persist optional artifacts (MA plots, dill files), and surface helper functions for serialization.
+- [ ] Add plotting helpers (volcano plot, volcano with labels) based on the provided starter code, aligned with the new plotting module.
+
+Phase 4 — Pathway Enrichment & Visualization
+--------------------------------------------
+- [ ] Introduce `sc_robust/de/pathways.py` with loaders for packaged GMTs, enrichment functions (`run_pathway_enrichment`, `run_pathway_enrichment_for_clusters`), and per-cluster aggregation of pathway statistics.
+- [ ] Port and adapt supplied plotting examples: pathway volcano plots, S-curve plots, and density-difference enrichment plots driven by DEG summaries.
+- [ ] Wire optional high-level orchestration (`perform_de_workflow`) to run pseudobulk → DE → pathway analysis end-to-end, with hooks to persist results and reuse plotting helpers.
+
+Phase 5 — Documentation, Examples, and Tests
+--------------------------------------------
+- [ ] Document the full DE/pathway workflow in README/docs (including packaged pathway usage, runtime dependencies, and example CLI/Notebook snippets).
+- [ ] Add pytest smoke/integration tests using realistic synthetic data (small AnnData, simple pathway files) covering both pseudobulk modes, DE contrasts, and enrichment logic (skipping gracefully when optional deps absent).
+- [ ] Provide reproducibility metadata (timestamps, parameter capture) in result dataclasses and ensure serialization helpers are exercised in tests/examples.

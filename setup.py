@@ -26,10 +26,13 @@ setuptools.setup(
      install_requires = install_requires,
      url="https://github.com/scottyler89/sc_robust",
      packages=setuptools.find_packages(),
+     include_package_data=True,
+     package_data={
+         "sc_robust": ["data/pathways/*.gmt"],
+     },
      classifiers=[
          "Programming Language :: Python :: 3",
          "License :: OSI Approved :: GNU Affero General Public License v3",
          "Operating System :: OS Independent",
      ],
  )
-

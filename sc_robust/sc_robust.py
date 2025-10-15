@@ -62,7 +62,7 @@ class robust(object):
         return
     #
     #
-    def save(f):
+    def save(self, f):
         """Save the robust object to a file using dill."""
         with open(f, 'wb') as file:
             dill.dump(self, file)
@@ -166,6 +166,5 @@ class robust(object):
             self.initial_k, 
             cosine = True, use_gpu = False)
         return
-
 
 
