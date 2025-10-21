@@ -5,7 +5,10 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any, Dict, Mapping, MutableMapping, Optional, Sequence
 
+from importlib import resources
 import pandas as pd
+
+GENE_ANNOTATIONS_FILENAME = "ensg_annotations_abbreviated.txt"
 
 
 @dataclass
@@ -88,3 +91,50 @@ class PathwayEnrichmentResult:
         else:
             self.concatenated = pd.DataFrame()
         return self.concatenated
+
+
+def load_default_gene_annotations() -> pd.DataFrame:
+    """
+    Load the packaged ENSG annotations and return a standardized DataFrame.
+
+    The returned frame is indexed by Ensembl gene IDs (`gene_id`) and always
+    exposes at least `gene_id`, `gene_name`, `chromosome`, and
+    `gene_description` columns so downstream DE helpers can rely on a stable
+    schema.
+    """
+    try:
+        data_path = resources.files("sc_robust.data").joinpath(GENE_ANNOTATIONS_FILENAME)
+    except AttributeError as exc:
+        raise FileNotFoundError(
+            f"Could not locate packaged gene annotations '{GENE_ANNOTATIONS_FILENAME}'. "
+            "Verify that the resource is included in the installed distribution."
+        ) from exc
+
+    if not data_path.is_file():
+        raise FileNotFoundError(
+            f"Packaged gene annotation file '{GENE_ANNOTATIONS_FILENAME}' is missing. "
+            "Reinstall the package or ensure setup.py includes the data file."
+        )
+
+    with data_path.open("rb") as handle:
+        df = pd.read_csv(handle, sep="\t")
+
+    rename_map = {
+        "Gene stable ID": "gene_id",
+        "Chromosome/scaffold name": "chromosome",
+        "Gene name": "gene_name",
+        "Gene description": "gene_description",
+    }
+    missing = [orig for orig in rename_map if orig not in df.columns]
+    if missing:
+        raise KeyError(
+            f"Packaged gene annotation file is missing expected columns: {missing}. "
+            "Ensure the resource matches the documented schema."
+        )
+
+    df = df.rename(columns=rename_map)
+    df = df.drop_duplicates(subset="gene_id", keep="first")
+    df = df.set_index("gene_id", drop=False)
+    df.index = df.index.astype(str)
+    df["gene_name"] = df["gene_name"].astype(str)
+    return df

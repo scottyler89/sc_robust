@@ -183,18 +183,28 @@ Phase 2 — Pseudobulk Builders
 
 Phase 3 — Differential Expression Pipeline
 ------------------------------------------
-- [ ] Create `sc_robust/de/differential_expression.py` utilities to prepare `DeseqDataSet` objects (guard imports with informative errors), including default cell-means design (no intercept in within-cluster mode) and topology-aware design matrices.
-- [ ] Implement cluster-vs-all and pairwise DE routines that return structured results, persist optional artifacts (MA plots, dill files), and surface helper functions for serialization.
-- [ ] Add plotting helpers (volcano plot, volcano with labels) based on the provided starter code, aligned with the new plotting module.
+- [x] Create `sc_robust/de/differential_expression.py` utilities to prepare `DeseqDataSet` objects (guard imports with informative errors), including default cell-means design (no intercept in within-cluster mode) and topology-aware design matrices.
+- [x] Implement cluster-vs-all and pairwise DE routines that return structured results, persist optional artifacts (MA plots, dill files), and surface helper functions for serialization.
+- [x] Add plotting helpers (volcano plot, volcano with labels) based on the provided starter code, aligned with the new plotting module.
 
 Phase 4 — Pathway Enrichment & Visualization
 --------------------------------------------
-- [ ] Introduce `sc_robust/de/pathways.py` with loaders for packaged GMTs, enrichment functions (`run_pathway_enrichment`, `run_pathway_enrichment_for_clusters`), and per-cluster aggregation of pathway statistics.
-- [ ] Port and adapt supplied plotting examples: pathway volcano plots, S-curve plots, and density-difference enrichment plots driven by DEG summaries.
-- [ ] Wire optional high-level orchestration (`perform_de_workflow`) to run pseudobulk → DE → pathway analysis end-to-end, with hooks to persist results and reuse plotting helpers.
+- [x] Introduce `sc_robust/de/pathways.py` with loaders for packaged GMTs, enrichment functions (`run_pathway_enrichment`, `run_pathway_enrichment_for_clusters`), and per-cluster aggregation of pathway statistics.
+- [x] Port and adapt supplied plotting examples: pathway volcano plots, S-curve plots, and density-difference enrichment plots driven by DEG summaries.
+- [x] Wire optional high-level orchestration (`perform_de_workflow`) to run pseudobulk → DE → pathway analysis end-to-end, with hooks to persist results and reuse plotting helpers.
 
 Phase 5 — Documentation, Examples, and Tests
 --------------------------------------------
 - [ ] Document the full DE/pathway workflow in README/docs (including packaged pathway usage, runtime dependencies, and example CLI/Notebook snippets).
 - [ ] Add pytest smoke/integration tests using realistic synthetic data (small AnnData, simple pathway files) covering both pseudobulk modes, DE contrasts, and enrichment logic (skipping gracefully when optional deps absent).
 - [ ] Provide reproducibility metadata (timestamps, parameter capture) in result dataclasses and ensure serialization helpers are exercised in tests/examples.
+
+
+Upcoming — Pathway Enrichment Parallelism Enhancements
+======================================================
+
+- [x] Profile current pathway enrichment workflow to confirm bottlenecks and quantify task sizes.
+- [x] Introduce ProcessPoolExecutor-backed execution path with picklable task payloads and safe resource loading.
+- [x] Precompute gene membership masks/hashes to accelerate pathway subset selection without pandas indexing overhead.
+- [x] Add unit and integration tests comparing sequential vs. parallel outputs for representative contrast/library combinations.
+- [x] Benchmark new implementation on large contrast sets; document performance and resource considerations.

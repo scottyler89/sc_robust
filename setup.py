@@ -28,7 +28,10 @@ setuptools.setup(
      packages=setuptools.find_packages(),
      include_package_data=True,
      package_data={
-         "sc_robust": ["data/pathways/*.gmt"],
+         "sc_robust": [
+             "data/pathways/*.gmt",
+             "data/ensg_annotations_abbreviated.txt",
+         ],
      },
      classifiers=[
          "Programming Language :: Python :: 3",

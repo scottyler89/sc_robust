@@ -186,3 +186,8 @@ API Reference
 
 - `sc_robust.find_consensus.process_idx_dist_mask_to_g(indexes, distances, local_mask)`
   - Converts per-node neighbors, distances, and mask into a weighted COO adjacency using the package’s linear weighting.
+
+Differential Expression Updates
+-------------------------------
+- The differential-expression helpers automatically merge the packaged `ensg_annotations_abbreviated.txt` lookup so downstream tables always surface `gene_id` and `gene_name` columns, even when the caller does not supply annotations.
+- Pathway enrichment now hashes gene memberships and, when `n_jobs != 1`, uses a process-backed executor by default to sidestep the Python GIL. Environments that block process creation will emit a warning and transparently fall back to threaded execution; you can also force threading with `backend="thread"`.

@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Iterable, Optional, Sequence, Tuple
+from typing import Iterable, Optional, Sequence, Tuple, List
 
 import numpy as np
 import pandas as pd
@@ -15,6 +15,9 @@ __all__ = [
     "volcano_plot_with_labels",
     "pathway_scurve_plot",
     "plot_pathway_enrichment",
+    "plot_de_volcano",
+    "plot_pathway_volcano",
+    "plot_pathway_density_difference",
 ]
 
 
@@ -144,6 +147,51 @@ def volcano_plot_with_labels(
                 )
     fig.tight_layout()
     return fig, ax
+
+
+def plot_de_volcano(
+    df: pd.DataFrame,
+    genes_of_interest: Optional[Iterable[str]] = None,
+    *,
+    alpha: float = 0.05,
+    x_col: str = "log2FoldChange",
+    p_col: str = "padj",
+    title: str = "Differential Expression Volcano",
+    figsize: Tuple[float, float] = (8, 6),
+    point_size: float = 10.0,
+    offset: Tuple[float, float] = (5, 5),
+    highlight_only: bool = False,
+) -> Tuple[plt.Figure, plt.Axes]:
+    """
+    Convenience wrapper around :func:`volcano_plot` for DE results.
+    """
+    go_list: Optional[List[str]] = None
+    if genes_of_interest is not None:
+        go_list = list(genes_of_interest)
+
+    if go_list:
+        return volcano_plot_with_labels(
+            df,
+            go_list,
+            var_name_col="gene_name",
+            alpha=alpha,
+            x_col=x_col,
+            p_col=p_col,
+            title=title,
+            figsize=figsize,
+            point_size=point_size,
+            offset=offset,
+            highlight_only=highlight_only,
+        )
+    return volcano_plot(
+        df,
+        alpha=alpha,
+        x_col=x_col,
+        p_col=p_col,
+        title=title,
+        figsize=figsize,
+        point_size=point_size,
+    )
 
 
 def pathway_scurve_plot(
@@ -303,4 +351,82 @@ def plot_pathway_enrichment(
         fig.tight_layout()
     if out_path is not None:
         fig.savefig(out_path, dpi=600)
+    return fig, ax
+
+
+def plot_pathway_volcano(
+    df: pd.DataFrame,
+    pathways_of_interest: Optional[Iterable[str]] = None,
+    *,
+    alpha: float = 0.05,
+    x_col: str = "enrichment_t",
+    p_col: str = "BH_adj_p",
+    title: str = "Pathway Volcano Plot",
+    figsize: Tuple[float, float] = (8, 6),
+    point_size: float = 10.0,
+    offset: Tuple[float, float] = (5, 5),
+    highlight_only: bool = False,
+) -> Tuple[plt.Figure, plt.Axes]:
+    """
+    Volcano plot tailored to pathway enrichment tables.
+    """
+    poi = list(pathways_of_interest) if pathways_of_interest is not None else []
+    if poi:
+        return volcano_plot_with_labels(
+            df,
+            poi,
+            var_name_col="pathway",
+            alpha=alpha,
+            x_col=x_col,
+            p_col=p_col,
+            title=title,
+            figsize=figsize,
+            point_size=point_size,
+            offset=offset,
+            highlight_only=highlight_only,
+        )
+    return volcano_plot(
+        df,
+        alpha=alpha,
+        x_col=x_col,
+        p_col=p_col,
+        x_lab=x_col,
+        y_lab=f"-log10({p_col})",
+        title=title,
+        figsize=figsize,
+        point_size=point_size,
+    )
+
+
+def plot_pathway_density_difference(
+    de_df: pd.DataFrame,
+    path_df: pd.DataFrame,
+    pathway_name: str,
+    *,
+    enrichment_col: str = "enrichment_t",
+    stat_col: str = "stat",
+    gene_name_col: str = "gene_name",
+    path_gene_col: str = "nom_sig_genes",
+    fig_size: Tuple[float, float] = (8, 5),
+    x_min: Optional[float] = None,
+    x_max: Optional[float] = None,
+    alpha: float = 0.05,
+    out_path: Optional[Path] = None,
+) -> Tuple[plt.Figure, plt.Axes]:
+    """
+    Wrapper around :func:`plot_pathway_enrichment` with more explicit naming.
+    """
+    fig, ax = plot_pathway_enrichment(
+        deg_df=de_df,
+        path_df=path_df,
+        pathway_name=pathway_name,
+        enrichment_col=enrichment_col,
+        stat_col=stat_col,
+        gene_name_col=gene_name_col,
+        path_gene_col=path_gene_col,
+        fig_size=fig_size,
+        x_min=x_min,
+        x_max=x_max,
+        out_path=out_path,
+    )
     return fig, ax
