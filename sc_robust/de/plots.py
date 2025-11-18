@@ -3,12 +3,16 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Iterable, Optional, Sequence, Tuple, List
+from typing import Callable, Iterable, Optional, Sequence, Tuple, List, Union
 
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
+import seaborn as sns
 from scipy.stats import gaussian_kde
+from scipy.spatial.distance import squareform
+from scipy.cluster.hierarchy import linkage, leaves_list
+from sklearn.metrics import pairwise_distances
 
 __all__ = [
     "volcano_plot",
@@ -18,6 +22,7 @@ __all__ = [
     "plot_de_volcano",
     "plot_pathway_volcano",
     "plot_pathway_density_difference",
+    "plot_pathway_enrichment_heatmap",
 ]
 
 
@@ -351,6 +356,124 @@ def plot_pathway_enrichment(
         fig.tight_layout()
     if out_path is not None:
         fig.savefig(out_path, dpi=600)
+    return fig, ax
+
+
+def plot_pathway_enrichment_heatmap(
+    matrix: pd.DataFrame,
+    *,
+    original_values: Optional[pd.DataFrame] = None,
+    transpose: bool = False,
+    zscore_axis: str = "columns",
+    zscore: bool = True,
+    clustering_metric: str = "cosine",
+    figsize: Tuple[float, float] = (10, 6),
+    cmap: str = "coolwarm",
+    annot: bool = False,
+    annot_fmt: str = ".2f",
+    logger: Optional[Callable[[str], None]] = None,
+    out_path: Optional[Union[str, Path]] = None,
+    cbar_label: Optional[str] = None,
+) -> Tuple[plt.Figure, plt.Axes]:
+    """
+    Plot a clustered heatmap of pathway enrichment statistics.
+
+    Parameters
+    ----------
+    matrix:
+        DataFrame indexed by contrasts (rows) and pathways (columns) containing statistics.
+    original_values:
+        Optional DataFrame with the same shape as ``matrix`` used for annotations (raw values).
+    transpose:
+        When True, swap axes prior to plotting.
+    zscore_axis:
+        Axis to normalise: ``"columns"`` (default) z-scores per pathway; ``"rows"`` z-scores per contrast.
+    zscore:
+        Whether to z-score values before clustering (default True).
+    clustering_metric:
+        Distance metric used for hierarchical clustering (default cosine).
+    figsize, cmap, annot, annot_fmt:
+        Matplotlib/Seaborn styling arguments.
+    logger:
+        Optional callable for diagnostic messages.
+    out_path:
+        Optional path to save the figure.
+    cbar_label:
+        Custom colorbar label.
+    """
+    if matrix.empty:
+        raise ValueError("Heatmap matrix is empty.")
+    if original_values is not None and original_values.shape != matrix.shape:
+        raise ValueError("original_values must have the same shape as matrix.")
+
+    matrix = matrix.copy()
+    orig = original_values.copy() if original_values is not None else matrix.copy()
+
+    axis = 0 if zscore_axis.lower().startswith("col") else 1
+
+    def _zscore(series: pd.Series) -> pd.Series:
+        mean = series.mean(skipna=True)
+        std = series.std(ddof=0, skipna=True)
+        if pd.isna(std) or np.isclose(std, 0.0):
+            return pd.Series(np.nan, index=series.index)
+        return (series - mean) / std
+
+    if zscore:
+        zscored = matrix.apply(_zscore, axis=axis)
+    else:
+        zscored = matrix.copy()
+
+    def _cluster_order(df: pd.DataFrame, cluster_axis: int) -> List[int]:
+        axis_df = df if cluster_axis == 0 else df.T
+        if axis_df.shape[0] <= 1:
+            return list(range(axis_df.shape[0]))
+        arr = axis_df.to_numpy()
+        arr = np.nan_to_num(arr, nan=0.0)
+        dist = pairwise_distances(arr, metric=clustering_metric)
+        dist = np.nan_to_num(dist, nan=0.0)
+        condensed = squareform(dist, checks=False)
+        linkage_matrix = linkage(condensed, method="average")
+        order = leaves_list(linkage_matrix)
+        return order.tolist()
+
+    row_order = _cluster_order(zscored, cluster_axis=0)
+    col_order = _cluster_order(zscored, cluster_axis=1)
+    ordered = zscored.iloc[row_order, col_order]
+    ordered_orig = orig.iloc[row_order, col_order]
+
+    if transpose:
+        ordered = ordered.T
+        ordered_orig = ordered_orig.T
+
+    annot_data = ordered_orig.to_numpy() if annot else False
+
+    fig, ax = plt.subplots(figsize=figsize)
+    sns.heatmap(
+        ordered,
+        ax=ax,
+        cmap=cmap,
+        center=0.0,
+        annot=annot_data,
+        fmt=annot_fmt,
+        cbar_kws={"label": cbar_label or ("z-scored statistic" if zscore else "statistic")},
+        mask=ordered.isnull(),
+        annot_kws={"fontsize": 8} if annot else None,
+    )
+    ax.set_xlabel("Pathway" if not transpose else "Contrast")
+    ax.set_ylabel("Contrast" if not transpose else "Pathway")
+    ax.set_title("Pathway enrichment heatmap")
+    ax.tick_params(axis="x", rotation=45)
+    ax.tick_params(axis="y", rotation=0)
+    for label in ax.get_xticklabels():
+        label.set_horizontalalignment("right")
+
+    if out_path is not None:
+        out_path = Path(out_path)
+        out_path.parent.mkdir(parents=True, exist_ok=True)
+        fig.savefig(out_path, dpi=300, bbox_inches="tight")
+        if logger:
+            logger(f"Saved heatmap to {out_path}")
+
     return fig, ax
 
 
