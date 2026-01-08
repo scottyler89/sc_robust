@@ -147,8 +147,10 @@ def _run_pathway_enrichment_arrays(
 
     results: Dict[str, Dict[str, object]] = {}
     for pathway, idxs in index_map.items():
+        ref_size = len(pathways.get(pathway, ()))
         if idxs.size == 0:
             results[pathway] = {
+                "size": ref_size,
                 "mean_t": np.nan,
                 "enrichment_t": np.nan,
                 "p": np.nan,
@@ -199,6 +201,7 @@ def _run_pathway_enrichment_arrays(
             sig_gene_string = ""
 
         results[pathway] = {
+            "size": ref_size,
             "mean_t": mean_t,
             "enrichment_t": t_stat,
             "p": p_val,
@@ -220,7 +223,10 @@ def _run_pathway_enrichment_arrays(
     neg_mask = out_df["enrichment_t"].to_numpy(dtype=float) < 0
     signed[neg_mask] *= -1
     out_df["signed_neglog10_BH"] = signed
-    out_df = out_df.sort_values("mean_t", ascending=False)
+    out_df = out_df.sort_values("signed_neglog10_BH", ascending=False)
+    if "nom_sig_genes" in out_df.columns:
+        ordered_cols = [col for col in out_df.columns if col != "nom_sig_genes"] + ["nom_sig_genes"]
+        out_df = out_df.loc[:, ordered_cols]
     return out_df
 
 
@@ -266,6 +272,8 @@ def _enrichment_worker(
         frames.append(enriched)
 
     combined = pd.concat(frames, ignore_index=True) if frames else pd.DataFrame()
+    if not combined.empty and "signed_neglog10_BH" in combined.columns:
+        combined = combined.sort_values("signed_neglog10_BH", ascending=False, ignore_index=True)
     return contrast, combined
 
 

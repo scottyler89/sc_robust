@@ -43,11 +43,26 @@ def test_run_pathway_enrichment_matches_manual_subset():
         alpha=0.1,
     )
     assert "pathwayA" in result.index
+    assert result.columns[-1] == "nom_sig_genes"
     row = result.loc["pathwayA"]
     assert set(row.index) >= {"mean_t", "enrichment_t", "p", "BH_adj_p", "signed_neglog10_BH", "nom_sig_genes"}
+    assert int(row["size"]) == 3
     # Ensure duplicate gene was incorporated by checking the string includes GENE5 once.
     if row["nom_sig_genes"]:
         assert "GENE5" in row["nom_sig_genes"]
+
+
+def test_run_pathway_enrichment_sorts_by_signed_neglog10_BH():
+    de_df = pd.DataFrame(
+        {
+            "gene_name": ["A1", "A2", "A3", "B1", "B2", "B3"],
+            "stat": [5.0, 4.0, 6.0, -0.2, 0.1, 0.0],
+            "pvalue": [0.001] * 6,
+        }
+    )
+    pathways = {"Pos": ["A1", "A2", "A3"], "Neg": ["B1", "B2", "B3"]}
+    result = run_pathway_enrichment(de_df, pathways, alpha=0.05)
+    assert result.index[0] == "Pos"
 
 
 def test_parallel_enrichment_matches_sequential(tmp_path):
