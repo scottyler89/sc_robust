@@ -327,6 +327,7 @@ def indices_and_weights_to_graph(indices, weights, length):
     Skips self-edges and truncates preallocated arrays to the actual edge count
     to avoid zero-initialized artifacts.
     """
+    n_nodes = len(indices)
     r_lin = np.zeros((length), dtype=np.int64)
     c_lin = np.zeros((length), dtype=np.int64)
     w_lin = np.zeros((length), dtype=np.float32)
@@ -347,7 +348,7 @@ def indices_and_weights_to_graph(indices, weights, length):
     r_lin = r_lin[:counter]
     c_lin = c_lin[:counter]
     w_lin = w_lin[:counter]
-    return coo_matrix((w_lin,(r_lin, c_lin)))
+    return coo_matrix((w_lin, (r_lin, c_lin)), shape=(n_nodes, n_nodes))
 
 
 def combine_and_sort_distances(common_edges,
