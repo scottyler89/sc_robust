@@ -14,6 +14,8 @@ from .find_consensus import find_pcs, find_consensus_graph
 from importlib import metadata
 import hashlib
 import datetime
+import json
+import time
 
 logger = logging.getLogger(__name__)
 
@@ -178,11 +180,17 @@ class robust(object):
         self.norm_function = norm_function
 
         self.provenance = self._build_provenance()
+        start = time.perf_counter()
         self.do_splits()
+        logger.info("step=do_splits elapsed_s=%.3f", time.perf_counter() - start)
         self.normalize()
+        logger.info("step=normalize elapsed_s=%.3f", time.perf_counter() - start)
         self.feature_select()
+        logger.info("step=feature_select elapsed_s=%.3f", time.perf_counter() - start)
         self.find_reproducible_pcs()
+        logger.info("step=find_reproducible_pcs elapsed_s=%.3f", time.perf_counter() - start)
         self.get_consensus_graph()
+        logger.info("step=get_consensus_graph elapsed_s=%.3f", time.perf_counter() - start)
         return
     #
     #
@@ -256,6 +264,48 @@ class robust(object):
             },
             "anticor_options": dict(self.anticor_options),
         }
+
+    def _write_json(self, path: Path, payload: Dict[str, Any]) -> None:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        with path.open("w", encoding="utf-8") as handle:
+            json.dump(payload, handle, indent=2, sort_keys=True, default=str)
+
+    def _record_feature_selection_manifest(
+        self,
+        *,
+        split: str,
+        feature_df,
+        selected_indices: np.ndarray,
+        subset_idxs: np.ndarray,
+        scratch_dir: Optional[Path],
+    ) -> None:
+        if scratch_dir is None:
+            return
+        try:
+            feature_ids_order = [str(x) for x in feature_df.index.tolist()]
+        except Exception:
+            feature_ids_order = []
+        kept_features_order = []
+        try:
+            kept_features_order = [str(feature_df.index[i]) for i in selected_indices.tolist()]
+        except Exception:
+            kept_features_order = []
+
+        manifest = {
+            "created_utc": datetime.datetime.now(datetime.timezone.utc).isoformat(),
+            "split": split,
+            "seed": self.seed,
+            "species": self.species,
+            "subset_n": int(len(subset_idxs)),
+            "n_features_total": int(len(feature_df)),
+            "n_features_selected": int(len(selected_indices)),
+            "feature_ids_order": feature_ids_order,
+            "kept_features_order": kept_features_order,
+            "anticor_options": dict(self.anticor_options),
+        }
+        out_path = scratch_dir / "kept_features_manifest.json"
+        self._write_json(out_path, manifest)
+        self.provenance.setdefault("artifacts", {})[f"feature_selection_manifest_{split}"] = str(out_path)
     #
     #
     def do_splits(self):
@@ -354,6 +404,13 @@ class robust(object):
                 )
             ) from exc
         self.train_feat_idxs = np.where(self.train_feature_df["selected"]==True)[0]
+        self._record_feature_selection_manifest(
+            split="train",
+            feature_df=self.train_feature_df,
+            selected_indices=self.train_feat_idxs,
+            subset_idxs=np.asarray(subset_idxs),
+            scratch_dir=train_scratch_dir,
+        )
         try:
             with _temporary_numpy_seed(self.seed + 2):
                 self.val_feature_df = _call_get_anti_cor_genes(
@@ -373,6 +430,13 @@ class robust(object):
                 )
             ) from exc
         self.val_feat_idxs = np.where(self.val_feature_df["selected"]==True)[0]
+        self._record_feature_selection_manifest(
+            split="val",
+            feature_df=self.val_feature_df,
+            selected_indices=self.val_feat_idxs,
+            subset_idxs=np.asarray(subset_idxs),
+            scratch_dir=val_scratch_dir,
+        )
     #
     #
     def find_reproducible_pcs(self):

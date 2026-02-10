@@ -11,9 +11,11 @@ from sklearn.decomposition import TruncatedSVD
 from anticor_features.anticor_stats import no_p_pear as pearson
 from typing import Optional, Any
 import warnings
+import logging
 
 # Gated debug printing for this module
 DEBUG = False
+logger = logging.getLogger(__name__)
 
 
 def find_pcs(train_mat: Any, 
@@ -22,12 +24,12 @@ def find_pcs(train_mat: Any,
              do_plot: Optional[bool] = False,
              random_state: Optional[int] = None):
     if DEBUG:
-        print("Decomposing training and validation matrices")
+        logger.debug("Decomposing training and validation matrices")
     ## Sanity check
     if DEBUG:
-        print(f"train_mat.shape:{train_mat.shape}")
-        print(f"val_mat.shape:{val_mat.shape}")
-        print(f"pc_max:{pc_max}")
+        logger.debug("train_mat.shape=%s", getattr(train_mat, "shape", None))
+        logger.debug("val_mat.shape=%s", getattr(val_mat, "shape", None))
+        logger.debug("pc_max=%s", pc_max)
     pc_max = min(pc_max,min(train_mat.shape), min(val_mat.shape))
     # Keep only the genes that are expressed in both
     train_idxs = sorted(list(set(train_mat.indices)))
@@ -36,14 +38,12 @@ def find_pcs(train_mat: Any,
     train_pc = tsvd(train_mat, npcs=pc_max)
     val_pc = tsvd(val_mat, npcs=pc_max)
     if DEBUG:
-        print("\tperforming empirical validation")
+        logger.debug("performing empirical validation")
     train_keep, val_keep = keep_correlated_pcs(train_pc, val_pc, do_plot=do_plot, random_state=random_state)
     train_pc = train_pc[:,train_keep]
     val_pc = val_pc[:,val_keep]
     if DEBUG:
-        print("\tfinal dimensionality:")
-        print("\t\ttraining:",train_pc.shape)
-        print("\t\tvalidation:",val_pc.shape)
+        logger.debug("final dimensionality training=%s validation=%s", train_pc.shape, val_pc.shape)
     return train_pc, val_pc
 
 
@@ -383,8 +383,7 @@ def combine_and_sort_distances(common_edges,
         n_edges_per_node.append(temp_idx.shape[0])
     #n_nodes = common_edges.shape[0]
     if DEBUG:
-        print("min edges found were:",min(n_edges_per_node))
-        print("maximum edges found were:",max(n_edges_per_node))
+        logger.debug("min edges found=%s max edges found=%s", min(n_edges_per_node), max(n_edges_per_node))
     merged_graph = indices_and_weights_to_graph(merged_index_list, merged_weight_list, sum(n_edges_per_node))
     ## Now re-collate them into their final destination format
     #merged_indices = torch.zeros((n_nodes,max_edges),dtype=torch.int64)
@@ -402,7 +401,7 @@ def fix_edge(cur_index, cur_distance, cur_mask, ref_index, ref_distance, ref_mas
     for i in range(cur_index.shape[0]):
         if min(cur_index[i])<0:
             if DEBUG:
-                print("found weird edge case:",i)
+                logger.debug("found weird edge case i=%s", i)
             # This means that svd failed and propogated through to nearest neighbor
             # which returns -1s if there are nans
             cur_index[i]=ref_index[i]
@@ -423,7 +422,7 @@ def merge_knns(train_index, train_distance, train_mask, val_index, val_distance,
     val_index, val_distance, val_mask = fix_edge(val_index, val_distance, val_mask,
                                                  train_index, train_distance, train_mask)
     if DEBUG:
-        print("\tmerging the knns")
+        logger.debug("merging the knns")
     for i in range(len(val_index)):
         if torch.min(val_index[i]) < 0:
             raise ValueError("Negative index in validation KNN; ensure k <= n and inputs have no NaNs.")
@@ -612,10 +611,11 @@ def mask_knn_local_diff_dist(dists, prior_mask=None, cutoff_threshold=3, min_k=1
     if prior_mask is None:
         prior_mask = torch.ones_like(dists)
     if DEBUG:
-        print("dists.shape:",dists.shape)
-        print("min_k:",min_k)
-        print("mean number connections BEFORE local masking:")
-        print(torch.mean(torch.sum(prior_mask.float(), dim=1)))
+        logger.debug("dists.shape=%s min_k=%s", getattr(dists, "shape", None), min_k)
+        logger.debug(
+            "mean connections before masking=%.3f",
+            float(torch.mean(torch.sum(prior_mask.float(), dim=1)).item()),
+        )
     # Create a boolean tensor with ones (True) of the same shape as dists
     diff_mask = torch.ones_like(dists, dtype=torch.bool)
     # Calculate the discrete difference of the relevant slice of dists
@@ -650,10 +650,11 @@ def mask_knn_local_diff_dist(dists, prior_mask=None, cutoff_threshold=3, min_k=1
     #print("diff_mask after local diff masking")
     #print(diff_mask)
     if DEBUG:
-        print("mean number connections after local masking:")
-        print(torch.mean(torch.sum(diff_mask.float(), dim=1)))
-        print("min number connections after local masking:")
-        print(torch.min(torch.sum(diff_mask.float(), dim=1)))
+        logger.debug(
+            "mean connections after masking=%.3f min connections=%s",
+            float(torch.mean(torch.sum(diff_mask.float(), dim=1)).item()),
+            int(torch.min(torch.sum(diff_mask.float(), dim=1)).item()),
+        )
     return diff_mask
 
 
