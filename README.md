@@ -125,7 +125,16 @@ gene_ids = (
 )
 
 # Build the robust object (splits -> normalize -> feature select -> PCs -> graph)
-ro = robust(adata, gene_ids=gene_ids, norm_function="pf_log", do_plot=False)
+ro = robust(
+    adata,
+    gene_ids=gene_ids,
+    norm_function="pf_log",
+    # anticor_features integration knobs
+    scratch_dir="scratch/anticor",
+    offline_mode=True,  # hard-enforce no live GO/g:Profiler lookups
+    use_live_pathway_lookup=False,
+    do_plot=False,
+)
 
 # The consensus graph is available as a scipy.sparse COO matrix
 G = ro.graph
@@ -159,6 +168,10 @@ pb_exprs, pb_meta = prep_sample_pseudobulk(
 Tips
 - The default neighbor count is adaptive: `k ≈ round(log(n))` but capped and masked locally.
 - The robust object exposes: `train/val/test` (normalized), `train_pcs/val_pcs`, selected features, and the final `graph`.
+
+Offline note
+- With recent `anticor_features`, pathway-based pre-removal uses shipped ID banks by default (no network) unless `use_live_pathway_lookup=True` or the bank is missing for your `species`.
+- If you need a guarantee that no live lookup can happen, pass `offline_mode=True` (recommended for HPC/sandboxed environments).
 
 API Reference
 -------------
