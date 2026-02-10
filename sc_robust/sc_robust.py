@@ -366,7 +366,9 @@ class robust(object):
         if len(self.splits)==3:
             self.train, self.val, self.test = multi_split(self.original_ad.X.T, percent_vect=self.splits, bin_size = 1000)
         elif len(self.splits)==2:
-            self.train, self.val = multi_split(self.original_ad, percent_vect=self.splits)
+            # count_split expects samples in columns (cells) and variables in rows (genes).
+            # AnnData stores X as cells×genes, so we pass X.T here for consistency with 3-way splits.
+            self.train, self.val = multi_split(self.original_ad.X.T, percent_vect=self.splits, bin_size = 1000)
             self.test = copy(self.val)
         else:
             raise AssertionError("Number of splits must be 2 or 3.")
