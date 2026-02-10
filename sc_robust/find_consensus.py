@@ -472,9 +472,10 @@ def find_one_graph(pcs, k=None, metric: Optional[str] = None, cosine: bool = Tru
     if k is None:
         # Default to the log of the number of observations
         k= int(round(np.log(pcs.shape[0]), 0))
-    # bound k between 20 and 200, and by n
-    n = pcs.shape[0]
+    n = int(pcs.shape[0])
+    k = int(k)
     k = min(k, 200, n)
+    k = max(k, min(10, n))
     # Determine metric for backward compatibility: cosine flag controls default unless metric provided
     chosen_metric = metric if metric is not None else ("cosine" if cosine else "ip")
     index = get_faiss_idx(pcs, metric=chosen_metric, cosine=cosine, use_gpu=use_gpu)

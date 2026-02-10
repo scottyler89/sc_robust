@@ -499,6 +499,7 @@ class robust(object):
         if k is None:
             k = int(round(np.log(n), 0))
         k = min(int(k), 200, n)
+        k = max(int(k), min(10, n))
         self.provenance.setdefault("graph", {})
         self.provenance["graph"]["metric"] = "cosine"
         self.provenance["graph"]["k_used"] = int(k)
