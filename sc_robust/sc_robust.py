@@ -204,7 +204,7 @@ class robust(object):
         Default is `pf_log` (pseudocount-normalize then log1p), applied per
         split. If only two splits are provided, `test` is a copy of `val`.
         """
-        print("normalizing the three splits")
+        logger.info("normalizing_splits splits=%s norm_function=%s", self.splits, self.norm_function)
         self.train = NORM[self.norm_function](self.train)
         self.val = NORM[self.norm_function](self.val)
         if len(self.splits)==2:
@@ -227,7 +227,7 @@ class robust(object):
         """
         if subset_idxs is None:
             subset_idxs = np.arange(self.train.shape[0])
-        print("performing featue selection")
+        logger.info("feature_selection start subset_n=%s", len(subset_idxs))
         if type(self.gene_ids)!=list:
             if "gene_ids" in self.original_ad.var:
                 self.gene_ids = self.original_ad.var["gene_ids"].tolist()
