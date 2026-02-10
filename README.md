@@ -96,7 +96,7 @@ G_l2 = build_single_graph(E, k=None, metric='l2', symmetrize='max')
 ```
 
 Notes:
-- The default `k` is round(log(n)) capped by 200 and by `n`.
+- The default `k` is round(log(n)) but floored to 20 when possible (and capped by 200 and by `n`).
 - Weighting uses the package’s per-node linear rescale; masking is adaptive per-node by distance differences.
 - Metrics:
   - `cosine` (default): inner product on L2-normalized rows.
