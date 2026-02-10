@@ -22,8 +22,7 @@ def find_pcs(train_mat: Any,
              val_mat: Any,
              pc_max: Optional[int] = 250,
              do_plot: Optional[bool] = False,
-             random_state: Optional[int] = None,
-             validate: bool = True):
+             random_state: Optional[int] = None):
     if DEBUG:
         logger.debug("Decomposing training and validation matrices")
     ## Sanity check
@@ -40,17 +39,9 @@ def find_pcs(train_mat: Any,
     val_pc = tsvd(val_mat, npcs=pc_max)
     if DEBUG:
         logger.debug("performing empirical validation")
-    if validate:
-        train_keep, val_keep = keep_correlated_pcs(train_pc, val_pc, do_plot=do_plot, random_state=random_state)
-        if not np.any(train_keep) or not np.any(val_keep):
-            raise ValueError(
-                "No reproducible PCs found across splits during empirical validation. "
-                "This can happen on small/noisy datasets or when too few features are retained. "
-                "Options: increase `pc_max`, revisit feature selection parameters, or skip PC validation "
-                "(e.g., `robust(..., pc_validation=False)`)."
-            )
-        train_pc = train_pc[:, train_keep]
-        val_pc = val_pc[:, val_keep]
+    train_keep, val_keep = keep_correlated_pcs(train_pc, val_pc, do_plot=do_plot, random_state=random_state)
+    train_pc = train_pc[:, train_keep]
+    val_pc = val_pc[:, val_keep]
     if DEBUG:
         logger.debug("final dimensionality training=%s validation=%s", train_pc.shape, val_pc.shape)
     return train_pc, val_pc
@@ -336,7 +327,6 @@ def indices_and_weights_to_graph(indices, weights, length):
     Skips self-edges and truncates preallocated arrays to the actual edge count
     to avoid zero-initialized artifacts.
     """
-    n_nodes = len(indices)
     r_lin = np.zeros((length), dtype=np.int64)
     c_lin = np.zeros((length), dtype=np.int64)
     w_lin = np.zeros((length), dtype=np.float32)
@@ -357,7 +347,7 @@ def indices_and_weights_to_graph(indices, weights, length):
     r_lin = r_lin[:counter]
     c_lin = c_lin[:counter]
     w_lin = w_lin[:counter]
-    return coo_matrix((w_lin,(r_lin, c_lin)), shape=(n_nodes, n_nodes))
+    return coo_matrix((w_lin,(r_lin, c_lin)))
 
 
 def combine_and_sort_distances(common_edges,
@@ -471,8 +461,7 @@ def find_one_graph(pcs, k=None, metric: Optional[str] = None, cosine: bool = Tru
 
     Parameters:
       pcs: Array-like (n_samples, n_dims).
-      k: Optional int; defaults to round(log(n)), floored to 20 (when n>=20),
-        capped by 200 and n.
+      k: Optional int; defaults to round(log(n)), capped by 200 and n.
       metric: 'cosine' | 'l2' | 'ip'. If None, falls back to `cosine` flag.
       cosine: Legacy switch for backward compatibility (ignored if `metric` given).
       use_gpu: Use FAISS GPU if available.
@@ -482,23 +471,18 @@ def find_one_graph(pcs, k=None, metric: Optional[str] = None, cosine: bool = Tru
     """
     if k is None:
         # Default to the log of the number of observations
-        k = int(round(np.log(pcs.shape[0]), 0))
-    # Bound k by n and a practical range (default minimum 20 when possible).
-    n = int(pcs.shape[0])
-    k = int(k)
+        k= int(round(np.log(pcs.shape[0]), 0))
+    # bound k between 20 and 200, and by n
+    n = pcs.shape[0]
     k = min(k, 200, n)
-    k = max(k, min(20, n))
     # Determine metric for backward compatibility: cosine flag controls default unless metric provided
     chosen_metric = metric if metric is not None else ("cosine" if cosine else "ip")
     index = get_faiss_idx(pcs, metric=chosen_metric, cosine=cosine, use_gpu=use_gpu)
     indexes, distances = find_k_nearest_neighbors(index, pcs, k, metric=chosen_metric, cosine=cosine)
     ## filter using slicer method to get mask
-    # Ensure the local-diff mask has enough columns to compute differences.
-    mask_min_k = max(ceil(k / 2), 3)
-    mask_min_k = min(mask_min_k, max(k - 2, 0))
     local_mask = mask_knn_local_diff_dist(
-        distances,
-        min_k=mask_min_k,
+        torch.tensor(distances), 
+        min_k=max(ceil(k/2),3)
     )
     #for i in range(len(indexes)):
     #    if min(indexes[i])<0:

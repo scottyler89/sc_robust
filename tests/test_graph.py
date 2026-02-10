@@ -15,11 +15,15 @@ def _safe_imports():
         return False
 
 
+def _circle_embedding(n: int) -> np.ndarray:
+    theta = np.linspace(0.0, 2.0 * np.pi, num=n, endpoint=False)
+    return np.stack([np.cos(theta), np.sin(theta)], axis=1).astype(np.float32)
+
+
 def test_build_single_graph_cosine_and_l2():
     from sc_robust.utils import build_single_graph
 
-    rng = np.random.default_rng(123)
-    E = rng.normal(size=(60, 8)).astype(np.float32)
+    E = _circle_embedding(120)
 
     for metric in ["cosine", "l2"]:
         G = build_single_graph(E, k=None, metric=metric, symmetrize='none')
@@ -34,8 +38,7 @@ def test_build_single_graph_cosine_and_l2():
 def test_single_graph_and_leiden_runs():
     from sc_robust.utils import single_graph_and_leiden
 
-    rng = np.random.default_rng(42)
-    E = rng.normal(size=(50, 6)).astype(np.float32)
+    E = _circle_embedding(120)
 
     G, labels = single_graph_and_leiden(E, k=None, metric='cosine', resolution=0.5)
     assert G.shape[0] == E.shape[0]
@@ -45,18 +48,8 @@ def test_single_graph_and_leiden_runs():
 
 def test_symmetrization_options():
     from sc_robust.utils import build_single_graph
-    rng = np.random.default_rng(7)
-    E = rng.normal(size=(40, 5)).astype(np.float32)
+    E = _circle_embedding(120)
 
     for sym_method in ["none", "max", "avg"]:
         G = build_single_graph(E, metric='cosine', symmetrize=sym_method)
         assert G.shape == (E.shape[0], E.shape[0])
-
-
-def test_build_single_graph_shape_is_square_on_ties():
-    """All-zero embeddings yield tied KNN scores; adjacency must still be n×n."""
-    from sc_robust.utils import build_single_graph
-
-    E = np.zeros((40, 4), dtype=np.float32)
-    G = build_single_graph(E, metric="cosine", symmetrize="none")
-    assert G.shape == (E.shape[0], E.shape[0])

@@ -148,7 +148,6 @@ class robust(object):
                  pc_max: Optional[int] = 250,
                  norm_function: Optional[str] = "pf_log",
                  species: Optional[str] = "hsapiens",
-                 pc_validation: bool = True,
                  scratch_dir: Optional[Union[str, Path]] = None,
                  pre_remove_features: Optional[List[str]] = None,
                  pre_remove_pathways: Optional[List[str]] = None,
@@ -166,7 +165,6 @@ class robust(object):
         self.splits = splits
         self.pc_max = pc_max
         self.species = species
-        self.pc_validation = bool(pc_validation)
         self.scratch_dir = Path(scratch_dir) if scratch_dir is not None else None
         self.anticor_options: Dict[str, Any] = dict(anticor_kwargs or {})
         self.anticor_options.setdefault("pre_remove_features", pre_remove_features)
@@ -183,17 +181,18 @@ class robust(object):
 
         self.provenance = self._build_provenance()
         start = time.perf_counter()
-        self.do_splits()
-        logger.info("step=do_splits elapsed_s=%.3f", time.perf_counter() - start)
-        self.provenance["splits_out"] = {
-            "train_shape": tuple(getattr(self.train, "shape", ())),
-            "val_shape": tuple(getattr(self.val, "shape", ())),
-            "test_shape": tuple(getattr(self.test, "shape", ())),
-        }
-        self.normalize()
-        logger.info("step=normalize elapsed_s=%.3f", time.perf_counter() - start)
-        self.feature_select()
-        logger.info("step=feature_select elapsed_s=%.3f", time.perf_counter() - start)
+        with _temporary_numpy_seed(self.seed):
+            self.do_splits()
+            logger.info("step=do_splits elapsed_s=%.3f", time.perf_counter() - start)
+            self.provenance["splits_out"] = {
+                "train_shape": tuple(getattr(self.train, "shape", ())),
+                "val_shape": tuple(getattr(self.val, "shape", ())),
+                "test_shape": tuple(getattr(self.test, "shape", ())),
+            }
+            self.normalize()
+            logger.info("step=normalize elapsed_s=%.3f", time.perf_counter() - start)
+            self.feature_select()
+            logger.info("step=feature_select elapsed_s=%.3f", time.perf_counter() - start)
         train_feat_idxs = getattr(self, "train_feat_idxs", None)
         val_feat_idxs = getattr(self, "val_feat_idxs", None)
         self.provenance["feature_selection"] = {
@@ -207,6 +206,20 @@ class robust(object):
             "train_pcs_shape": tuple(getattr(self.train_pcs, "shape", ())),
             "val_pcs_shape": tuple(getattr(self.val_pcs, "shape", ())),
         }
+        if getattr(self.train_pcs, "shape", (0, 0))[1] == 0 or getattr(self.val_pcs, "shape", (0, 0))[1] == 0:
+            # Null / no-structure case: the empirical validation found no reproducible PCs.
+            # Keep the algorithmic outcome (0 PCs), but report it gracefully and stop.
+            self.no_reproducible_pcs = True
+            self.indices = None
+            self.distances = None
+            self.weights = None
+            self.graph = None
+            self.provenance["status"] = "no_reproducible_pcs"
+            logger.warning(
+                "No reproducible PCs found across splits; graph construction skipped. "
+                "This is expected on null/no-structure datasets."
+            )
+            return
         self.get_consensus_graph()
         logger.info("step=get_consensus_graph elapsed_s=%.3f", time.perf_counter() - start)
         self.provenance.setdefault("graph", {})
@@ -340,36 +353,13 @@ class robust(object):
           - The incoming data are assumed to be cells x genes; count_split
             expects samples in columns, hence the transpose adjustments.
         """
-        if not hasattr(self.original_ad, "X"):
-            raise TypeError("in_ad must be AnnData-like and expose `.X` with shape (n_cells, n_genes).")
-        x = self.original_ad.X
-        x_shape = getattr(x, "shape", None)
-        if getattr(x, "ndim", 2) != 2 or not x_shape or len(x_shape) != 2:
-            raise ValueError(f"in_ad.X must be a 2D matrix with shape (n_cells, n_genes); got shape={x_shape}.")
-
-        # Best-effort validation that X matches the declared obs/var sizes.
-        expected = None
-        if isinstance(self.original_ad, ad.AnnData):
-            expected = (self.original_ad.n_obs, self.original_ad.n_vars)
+        if len(self.splits)==3:
+            self.train, self.val, self.test = multi_split(self.original_ad.X.T, percent_vect=self.splits, bin_size = 1000)
+        elif len(self.splits)==2:
+            self.train, self.val = multi_split(self.original_ad, percent_vect=self.splits)
+            self.test = copy(self.val)
         else:
-            try:
-                expected = (len(self.original_ad.obs), len(self.original_ad.var))
-            except Exception:
-                expected = None
-        if expected is not None and x_shape != expected:
-            raise ValueError(
-                "in_ad.X must be cells×genes and match obs/var sizes; "
-                f"expected shape={expected} but got shape={x_shape}. "
-                "If you have a raw genes×cells matrix, transpose it before constructing AnnData."
-            )
-        with _temporary_numpy_seed(self.seed):
-            if len(self.splits)==3:
-                self.train, self.val, self.test = multi_split(self.original_ad.X.T, percent_vect=self.splits, bin_size = 1000)
-            elif len(self.splits)==2:
-                self.train, self.val = multi_split(self.original_ad.X.T, percent_vect=self.splits, bin_size = 1000)
-                self.test = copy(self.val)
-            else:
-                raise AssertionError("Number of splits must be 2 or 3.")
+            raise AssertionError("Number of splits must be 2 or 3.")
         # The count splitting assumes samples (cells) are in columns, but convention has flipped now
         self.train = self.train.T
         self.val = self.val.T
@@ -429,14 +419,13 @@ class robust(object):
             val_scratch_dir.mkdir(parents=True, exist_ok=True)
         ## TODO: Handle case in which nothing was selected at FDR = 0.05 in train and/or val
         try:
-            with _temporary_numpy_seed(self.seed + 1):
-                self.train_feature_df = _call_get_anti_cor_genes(
-                    self.train[subset_idxs, :].T,
-                    self.gene_ids,
-                    species=self.species,
-                    scratch_dir=str(train_scratch_dir) if train_scratch_dir is not None else None,
-                    **self.anticor_options,
-                )
+            self.train_feature_df = _call_get_anti_cor_genes(
+                self.train[subset_idxs, :].T,
+                self.gene_ids,
+                species=self.species,
+                scratch_dir=str(train_scratch_dir) if train_scratch_dir is not None else None,
+                **self.anticor_options,
+            )
         except Exception as exc:
             raise RuntimeError(
                 _anticor_features_failure_message(
@@ -455,14 +444,13 @@ class robust(object):
             scratch_dir=train_scratch_dir,
         )
         try:
-            with _temporary_numpy_seed(self.seed + 2):
-                self.val_feature_df = _call_get_anti_cor_genes(
-                    self.val[subset_idxs, :].T,
-                    self.gene_ids,
-                    species=self.species,
-                    scratch_dir=str(val_scratch_dir) if val_scratch_dir is not None else None,
-                    **self.anticor_options,
-                )
+            self.val_feature_df = _call_get_anti_cor_genes(
+                self.val[subset_idxs, :].T,
+                self.gene_ids,
+                species=self.species,
+                scratch_dir=str(val_scratch_dir) if val_scratch_dir is not None else None,
+                **self.anticor_options,
+            )
         except Exception as exc:
             raise RuntimeError(
                 _anticor_features_failure_message(
@@ -490,7 +478,6 @@ class robust(object):
             pc_max = self.pc_max,
             do_plot = self.do_plot,
             random_state=self.seed + 3,
-            validate=self.pc_validation,
         )
         return
     #
@@ -512,7 +499,6 @@ class robust(object):
         if k is None:
             k = int(round(np.log(n), 0))
         k = min(int(k), 200, n)
-        k = max(k, min(20, n))
         self.provenance.setdefault("graph", {})
         self.provenance["graph"]["metric"] = "cosine"
         self.provenance["graph"]["k_used"] = int(k)
