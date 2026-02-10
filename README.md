@@ -171,7 +171,8 @@ Tips
 
 Offline note
 - With recent `anticor_features`, pathway-based pre-removal uses shipped ID banks by default (no network) unless `use_live_pathway_lookup=True` or the bank is missing for your `species`.
-- If you need a guarantee that no live lookup can happen, pass `offline_mode=True` (recommended for HPC/sandboxed environments).
+- If no ID bank is available for your species (or you request custom pathway lists), `anticor_features` may require live lookup unless you provide `id_bank_dir=...`.
+- If you need a guarantee that no live lookup can happen, pass `offline_mode=True` (recommended for HPC/sandboxed environments). When a live lookup would otherwise be required, sc_robust will now raise a single actionable error with fixes (disable live lookup, provide an ID bank, or skip pathway removal).
 
 API Reference
 -------------

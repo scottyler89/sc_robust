@@ -31,3 +31,20 @@ def test_call_get_anti_cor_genes_filters_kwargs(monkeypatch):
     assert captured["feature_ids_len"] == 4
     assert "selected" in result
 
+
+def test_anticor_failure_message_mentions_offline_hint():
+    import sc_robust.sc_robust as sr
+
+    exc = ConnectionError("g:Profiler connection timed out")
+    msg = sr._anticor_features_failure_message(
+        exc,
+        species="hsapiens",
+        split_label="train",
+        anticor_options={
+            "offline_mode": False,
+            "use_live_pathway_lookup": True,
+            "pre_remove_pathways": ["GO:0000001"],
+        },
+    )
+    assert "environment without internet access" in msg or "without internet" in msg
+    assert "use_live_pathway_lookup=False" in msg

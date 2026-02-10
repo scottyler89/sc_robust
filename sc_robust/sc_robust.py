@@ -24,6 +24,78 @@ def _call_get_anti_cor_genes(*args, **kwargs):
     return get_anti_cor_genes(*args, **filtered)
 
 
+def _anticor_features_failure_message(
+    exc: Exception,
+    *,
+    species: str,
+    split_label: str,
+    anticor_options: Dict[str, Any],
+) -> str:
+    """Produce an actionable error message for anticor_features failures."""
+    exc_type = type(exc).__name__
+    exc_msg = str(exc)
+    exc_lower = exc_msg.lower()
+
+    offline_mode = bool(anticor_options.get("offline_mode", False))
+    use_live = bool(anticor_options.get("use_live_pathway_lookup", False))
+    pre_remove_pathways = anticor_options.get("pre_remove_pathways", None)
+
+    lines = [
+        f"anticor_features failed during feature selection ({split_label}).",
+        f"species={species!r} offline_mode={offline_mode} use_live_pathway_lookup={use_live}",
+        f"error_type={exc_type} error={exc_msg}",
+    ]
+
+    hints: List[str] = []
+
+    if offline_mode and use_live:
+        hints.append(
+            "You requested both offline_mode=True and use_live_pathway_lookup=True; disable live lookup or offline mode."
+        )
+
+    # Heuristics for common offline / network failures.
+    networkish = any(tok in exc_lower for tok in ("g:profiler", "gprofiler", "connection", "timed out", "network", "proxy"))
+    id_bankish = any(tok in exc_lower for tok in ("id bank", "idbank", "bank not found", "idbanknotfound"))
+
+    if networkish:
+        hints.append(
+            "This looks like a network-dependent pathway lookup (g:Profiler) in an environment without internet access."
+        )
+        hints.append(
+            "Fix: set use_live_pathway_lookup=False (recommended) and rely on shipped ID banks, or set pre_remove_pathways=[] to skip pathway-based removal."
+        )
+        hints.append(
+            "If you need custom pathway removals offline, generate/provide an ID bank and pass id_bank_dir=... ."
+        )
+
+    if id_bankish:
+        hints.append(
+            "The offline ID bank appears missing for this species or configuration."
+        )
+        hints.append(
+            "Fix: install/regenerate the anticor_features ID bank for your species, or pass id_bank_dir=... ."
+        )
+        if not offline_mode:
+            hints.append(
+                "Alternatively, allow live lookup by setting use_live_pathway_lookup=True (requires internet)."
+            )
+
+    if offline_mode and pre_remove_pathways not in (None, []) and not networkish and not id_bankish:
+        hints.append(
+            "With offline_mode=True, custom pre_remove_pathways may be unsupported unless you provide an ID bank; consider pre_remove_pathways=[] or id_bank_dir=... ."
+        )
+
+    if hints:
+        lines.append("Hints:")
+        lines.extend([f"- {hint}" for hint in hints])
+    else:
+        lines.append("Hints:")
+        lines.append("- Try setting offline_mode=True for clearer offline-only behavior, or set use_live_pathway_lookup=False to avoid live lookups.")
+        lines.append("- If using pathway-based removal offline, ensure an ID bank exists for your species or pass id_bank_dir=... .")
+
+    return "\n".join(lines)
+
+
 class robust(object):
     """Split-based robust graph builder and clustering helper.
 
@@ -82,6 +154,8 @@ class robust(object):
         self.anticor_options.setdefault("offline_mode", offline_mode)
         self.anticor_options.setdefault("id_bank_dir", str(id_bank_dir) if id_bank_dir is not None else None)
         self.anticor_options.setdefault("use_live_pathway_lookup", use_live_pathway_lookup)
+        if bool(self.anticor_options.get("offline_mode", False)) and bool(self.anticor_options.get("use_live_pathway_lookup", False)):
+            raise ValueError("offline_mode=True is incompatible with use_live_pathway_lookup=True.")
         self.do_plot = do_plot
         if norm_function not in NORM:
             raise AssertionError("norm_function arg must be one of:"+", ".join(sorted(list(NORM.keys()))))
@@ -172,21 +246,41 @@ class robust(object):
             train_scratch_dir.mkdir(parents=True, exist_ok=True)
             val_scratch_dir.mkdir(parents=True, exist_ok=True)
         ## TODO: Handle case in which nothing was selected at FDR = 0.05 in train and/or val
-        self.train_feature_df = _call_get_anti_cor_genes(
-            self.train[subset_idxs, :].T,
-            self.gene_ids,
-            species=self.species,
-            scratch_dir=str(train_scratch_dir) if train_scratch_dir is not None else None,
-            **self.anticor_options,
-        )
+        try:
+            self.train_feature_df = _call_get_anti_cor_genes(
+                self.train[subset_idxs, :].T,
+                self.gene_ids,
+                species=self.species,
+                scratch_dir=str(train_scratch_dir) if train_scratch_dir is not None else None,
+                **self.anticor_options,
+            )
+        except Exception as exc:
+            raise RuntimeError(
+                _anticor_features_failure_message(
+                    exc,
+                    species=self.species,
+                    split_label="train",
+                    anticor_options=self.anticor_options,
+                )
+            ) from exc
         self.train_feat_idxs = np.where(self.train_feature_df["selected"]==True)[0]
-        self.val_feature_df = _call_get_anti_cor_genes(
-            self.val[subset_idxs, :].T,
-            self.gene_ids,
-            species=self.species,
-            scratch_dir=str(val_scratch_dir) if val_scratch_dir is not None else None,
-            **self.anticor_options,
-        )
+        try:
+            self.val_feature_df = _call_get_anti_cor_genes(
+                self.val[subset_idxs, :].T,
+                self.gene_ids,
+                species=self.species,
+                scratch_dir=str(val_scratch_dir) if val_scratch_dir is not None else None,
+                **self.anticor_options,
+            )
+        except Exception as exc:
+            raise RuntimeError(
+                _anticor_features_failure_message(
+                    exc,
+                    species=self.species,
+                    split_label="val",
+                    anticor_options=self.anticor_options,
+                )
+            ) from exc
         self.val_feat_idxs = np.where(self.val_feature_df["selected"]==True)[0]
     #
     #
@@ -213,4 +307,3 @@ class robust(object):
             self.initial_k, 
             cosine = True, use_gpu = False)
         return
-
