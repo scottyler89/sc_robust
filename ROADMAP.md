@@ -208,3 +208,38 @@ Upcoming — Pathway Enrichment Parallelism Enhancements
 - [x] Precompute gene membership masks/hashes to accelerate pathway subset selection without pandas indexing overhead.
 - [x] Add unit and integration tests comparing sequential vs. parallel outputs for representative contrast/library combinations.
 - [x] Benchmark new implementation on large contrast sets; document performance and resource considerations.
+
+
+2026 User Feedback — Improvement Plan (Pending)
+==============================================
+
+This section tracks operational improvements based on downstream user feedback:
+offline/HPC friendliness, reproducibility, provenance, and clearer conventions.
+
+Phase A — Ergonomics + Safety (Low Risk)
+----------------------------------------
+
+- [ ] Replace library-level `print()` with `logging` (structured messages + progress hints).
+- [ ] Guarantee no global RNG side effects (no `np.random.seed()` inside library code).
+- [ ] Clarify axis conventions with early validation and actionable errors (cells×genes expected).
+- [ ] Surface anticor_features knobs end-to-end (scratch_dir, offline/id-bank/live-lookup) with clear failure messaging.
+
+Phase B — Reproducibility + Provenance
+--------------------------------------
+
+- [ ] Record first-class provenance on `robust` objects (inputs summary, hashes/IDs, params, dependency versions).
+- [ ] Persist feature-selection artifacts (kept feature order + manifest) when scratch_dir is used.
+- [ ] Make randomness fully deterministic from a single `random_state` across splitting + PC validation bootstraps.
+
+Phase C — Offline/HPC Execution Modes
+-------------------------------------
+
+- [ ] Make network calls explicit and optional (default local/offline; fail fast when live lookup required).
+- [ ] Add execution backend controls where multiprocessing is used (thread/process/sequential) + safe defaults for restricted runtimes.
+- [ ] Improve progress reporting for long jobs (step + elapsed + sizes).
+
+Phase D — API Conventions + Compatibility
+-----------------------------------------
+
+- [ ] Normalize matrix axis conventions across modules (cells×genes everywhere) or require explicit `cell_axis` and validate.
+- [ ] Add small end-to-end smoke tests on tiny real-ish matrices (beyond unit mocks) to cover major workflows.
