@@ -16,6 +16,7 @@ import hashlib
 import datetime
 import json
 import time
+import warnings
 
 logger = logging.getLogger(__name__)
 
@@ -163,6 +164,15 @@ class robust(object):
         self.initial_k = initial_k
         self.original_ad = in_ad
         self.splits = splits
+        if self.splits is not None and len(self.splits) == 2:
+            warnings.warn(
+                "splits has length 2: sc_robust will copy the validation split into `test` (no held-out DE split). "
+                "If you build clusters/graphs using the validation split, you must NOT reuse `test` for DE, "
+                "as it is not independent and re-introduces the double-dipping problem. "
+                "Use a 3-way split (train/val/test) for independent downstream DE.",
+                UserWarning,
+                stacklevel=2,
+            )
         self.pc_max = pc_max
         self.species = species
         self.scratch_dir = Path(scratch_dir) if scratch_dir is not None else None
