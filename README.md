@@ -32,6 +32,14 @@ Optional/adjacent tools
 Python compatibility
 - Tested on Python 3.10+. Other versions may work, but 3.10 is recommended.
 
+Data conventions
+----------------
+
+- Count matrices are **cells×genes** (rows = cells, columns = genes).
+- Graph adjacencies are **cells×cells**.
+- Embeddings/PCs are **n_cells×n_dims**.
+- `anticor_features` expects cells in columns (genes×cells); sc_robust handles the transpose internally.
+
 QC Workflow Example
 -------------------
 

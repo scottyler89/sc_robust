@@ -120,6 +120,9 @@ def prep_sample_pseudobulk(in_graph, X, cells_per_pb=10, sample_vect=None, clust
                                     - pb_coord_x, pb_coord_y (if coords provided): weighted average coordinates
                                     - Aggregated cell meta (if cell_meta provided): aggregated numeric and one-hot encoded categorical fields.
     """
+    x_shape = getattr(X, "shape", None)
+    if getattr(X, "ndim", 2) != 2 or not x_shape or len(x_shape) != 2:
+        raise ValueError(f"X must be a 2D matrix with shape (n_cells, n_genes); got shape={x_shape}.")
     n_cells = X.shape[0]
     
     # Check in_graph format.
@@ -135,8 +138,14 @@ def prep_sample_pseudobulk(in_graph, X, cells_per_pb=10, sample_vect=None, clust
     in_graph = make_symmetric(csr_graph.tocoo())
     
     # Basic input checks.
-    assert in_graph.shape[0] == in_graph.shape[1], "The adjacency graph is not square."
-    assert in_graph.shape[0] == n_cells, "The adjacency graph dims don't match the expression rows."
+    if in_graph.shape[0] != in_graph.shape[1]:
+        raise ValueError(f"The adjacency graph is not square: shape={in_graph.shape}.")
+    if in_graph.shape[0] != n_cells:
+        raise ValueError(
+            "Expression matrix X must be cells×genes with the same number of rows as the graph; "
+            f"graph.shape={in_graph.shape} X.shape={x_shape}. "
+            "If you provided genes×cells, transpose X."
+        )
     
     # Process sample and cluster vectors.
     if sample_vect is None:
@@ -151,7 +160,9 @@ def prep_sample_pseudobulk(in_graph, X, cells_per_pb=10, sample_vect=None, clust
     # Check gene_ids if provided.
     if gene_ids is not None:
         if len(gene_ids) != X.shape[1]:
-            raise ValueError("Length of gene_ids must match the number of columns in X.")
+            raise ValueError(
+                f"Length of gene_ids ({len(gene_ids)}) must match the number of columns in X ({X.shape[1]})."
+            )
     
     # If coords is provided, check its shape.
     if coords is not None:
@@ -285,6 +296,5 @@ def filter_edges_within_clusters(adj: coo_matrix, clusters: list) -> coo_matrix:
     new_data = data[same_cluster_mask]    
     # Return a new COO matrix containing only the intra-cluster edges
     return coo_matrix((new_data, (new_rows, new_cols)), shape=adj.shape)
-
 
 

@@ -103,12 +103,18 @@ def build_pseudobulk(
             gene_ids = list(counts.columns)
         counts_matrix = counts.to_numpy()
     if sparse.issparse(counts_matrix):
-        n_counts = counts_matrix.shape[0]
+        counts_shape = counts_matrix.shape
     else:
         counts_matrix = np.asarray(counts_matrix)
-        n_counts = counts_matrix.shape[0]
-    if n_counts != n_cells:
-        raise ValueError("counts and graph must have the same number of rows.")
+        counts_shape = counts_matrix.shape
+    if len(counts_shape) != 2:
+        raise ValueError(f"counts must be a 2D matrix with shape (n_cells, n_genes); got shape={counts_shape}.")
+    if counts_shape[0] != n_cells:
+        raise ValueError(
+            "counts must be cells×genes with the same number of rows as the graph; "
+            f"graph.shape={graph.shape} counts.shape={counts_shape}. "
+            "If you provided genes×cells, transpose counts."
+        )
 
     cluster_arr = np.asarray(cluster_labels) if cluster_labels is not None else None
     sample_arr = np.asarray(sample_labels) if sample_labels is not None else None

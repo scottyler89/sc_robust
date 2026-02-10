@@ -316,14 +316,32 @@ class robust(object):
             expects samples in columns, hence the transpose adjustments.
         """
         if not hasattr(self.original_ad, "X"):
-            raise TypeError("in_ad must be AnnData-like and expose `.X` (cells×genes).")
-        if getattr(self.original_ad.X, "ndim", 2) != 2:
-            raise ValueError("in_ad.X must be a 2D matrix with shape (n_cells, n_genes).")
+            raise TypeError("in_ad must be AnnData-like and expose `.X` with shape (n_cells, n_genes).")
+        x = self.original_ad.X
+        x_shape = getattr(x, "shape", None)
+        if getattr(x, "ndim", 2) != 2 or not x_shape or len(x_shape) != 2:
+            raise ValueError(f"in_ad.X must be a 2D matrix with shape (n_cells, n_genes); got shape={x_shape}.")
+
+        # Best-effort validation that X matches the declared obs/var sizes.
+        expected = None
+        if isinstance(self.original_ad, ad.AnnData):
+            expected = (self.original_ad.n_obs, self.original_ad.n_vars)
+        else:
+            try:
+                expected = (len(self.original_ad.obs), len(self.original_ad.var))
+            except Exception:
+                expected = None
+        if expected is not None and x_shape != expected:
+            raise ValueError(
+                "in_ad.X must be cells×genes and match obs/var sizes; "
+                f"expected shape={expected} but got shape={x_shape}. "
+                "If you have a raw genes×cells matrix, transpose it before constructing AnnData."
+            )
         with _temporary_numpy_seed(self.seed):
             if len(self.splits)==3:
                 self.train, self.val, self.test = multi_split(self.original_ad.X.T, percent_vect=self.splits, bin_size = 1000)
             elif len(self.splits)==2:
-                self.train, self.val = multi_split(self.original_ad, percent_vect=self.splits)
+                self.train, self.val = multi_split(self.original_ad.X.T, percent_vect=self.splits, bin_size = 1000)
                 self.test = copy(self.val)
             else:
                 raise AssertionError("Number of splits must be 2 or 3.")
