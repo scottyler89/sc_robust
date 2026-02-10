@@ -3,10 +3,12 @@ import anndata as ad
 from copy import copy, deepcopy
 import inspect
 import logging
+from contextlib import contextmanager
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Union
 from count_split.count_split import multi_split
 from anticor_features.anticor_features import get_anti_cor_genes
+import numpy as np
 from .normalization import *
 from .find_consensus import find_pcs, find_consensus_graph
 
@@ -22,6 +24,17 @@ def _call_get_anti_cor_genes(*args, **kwargs):
     allowed = set(sig.parameters)
     filtered = {k: v for k, v in kwargs.items() if k in allowed and v is not None}
     return get_anti_cor_genes(*args, **filtered)
+
+
+@contextmanager
+def _temporary_numpy_seed(seed: int):
+    """Temporarily set numpy's global RNG seed and restore the previous state."""
+    state = np.random.get_state()
+    np.random.seed(int(seed))
+    try:
+        yield
+    finally:
+        np.random.set_state(state)
 
 
 def _anticor_features_failure_message(
@@ -140,7 +153,7 @@ class robust(object):
                  initial_k: Optional[int] = None,
                  do_plot: Optional[bool] = False,
                  seed = 123456) -> None:
-        np.random.seed(seed)
+        self.seed = int(seed)
         self.gene_ids = gene_ids
         self.initial_k = initial_k
         self.original_ad = in_ad
@@ -181,13 +194,14 @@ class robust(object):
           - The incoming data are assumed to be cells x genes; count_split
             expects samples in columns, hence the transpose adjustments.
         """
-        if len(self.splits)==3:
-            self.train, self.val, self.test = multi_split(self.original_ad.X.T, percent_vect=self.splits, bin_size = 1000)
-        elif len(self.splits)==2:
-            self.train, self.val = multi_split(self.original_ad, percent_vect=self.splits)
-            self.test = copy(self.val)
-        else:
-            raise AssertionError("Number of splits must be 2 or 3.")
+        with _temporary_numpy_seed(self.seed):
+            if len(self.splits)==3:
+                self.train, self.val, self.test = multi_split(self.original_ad.X.T, percent_vect=self.splits, bin_size = 1000)
+            elif len(self.splits)==2:
+                self.train, self.val = multi_split(self.original_ad, percent_vect=self.splits)
+                self.test = copy(self.val)
+            else:
+                raise AssertionError("Number of splits must be 2 or 3.")
         # The count splitting assumes samples (cells) are in columns, but convention has flipped now
         self.train = self.train.T
         self.val = self.val.T
@@ -247,13 +261,14 @@ class robust(object):
             val_scratch_dir.mkdir(parents=True, exist_ok=True)
         ## TODO: Handle case in which nothing was selected at FDR = 0.05 in train and/or val
         try:
-            self.train_feature_df = _call_get_anti_cor_genes(
-                self.train[subset_idxs, :].T,
-                self.gene_ids,
-                species=self.species,
-                scratch_dir=str(train_scratch_dir) if train_scratch_dir is not None else None,
-                **self.anticor_options,
-            )
+            with _temporary_numpy_seed(self.seed + 1):
+                self.train_feature_df = _call_get_anti_cor_genes(
+                    self.train[subset_idxs, :].T,
+                    self.gene_ids,
+                    species=self.species,
+                    scratch_dir=str(train_scratch_dir) if train_scratch_dir is not None else None,
+                    **self.anticor_options,
+                )
         except Exception as exc:
             raise RuntimeError(
                 _anticor_features_failure_message(
@@ -265,13 +280,14 @@ class robust(object):
             ) from exc
         self.train_feat_idxs = np.where(self.train_feature_df["selected"]==True)[0]
         try:
-            self.val_feature_df = _call_get_anti_cor_genes(
-                self.val[subset_idxs, :].T,
-                self.gene_ids,
-                species=self.species,
-                scratch_dir=str(val_scratch_dir) if val_scratch_dir is not None else None,
-                **self.anticor_options,
-            )
+            with _temporary_numpy_seed(self.seed + 2):
+                self.val_feature_df = _call_get_anti_cor_genes(
+                    self.val[subset_idxs, :].T,
+                    self.gene_ids,
+                    species=self.species,
+                    scratch_dir=str(val_scratch_dir) if val_scratch_dir is not None else None,
+                    **self.anticor_options,
+                )
         except Exception as exc:
             raise RuntimeError(
                 _anticor_features_failure_message(
@@ -290,7 +306,9 @@ class robust(object):
             self.train[:,self.train_feat_idxs], 
             self.val[:,self.val_feat_idxs], 
             pc_max = self.pc_max,
-            do_plot = self.do_plot)
+            do_plot = self.do_plot,
+            random_state=self.seed + 3,
+        )
         return
     #
     #

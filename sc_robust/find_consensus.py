@@ -19,7 +19,8 @@ DEBUG = False
 def find_pcs(train_mat: Any, 
              val_mat: Any,
              pc_max: Optional[int] = 250,
-             do_plot: Optional[bool] = False):
+             do_plot: Optional[bool] = False,
+             random_state: Optional[int] = None):
     if DEBUG:
         print("Decomposing training and validation matrices")
     ## Sanity check
@@ -36,7 +37,7 @@ def find_pcs(train_mat: Any,
     val_pc = tsvd(val_mat, npcs=pc_max)
     if DEBUG:
         print("\tperforming empirical validation")
-    train_keep, val_keep = keep_correlated_pcs(train_pc, val_pc, do_plot=do_plot)
+    train_keep, val_keep = keep_correlated_pcs(train_pc, val_pc, do_plot=do_plot, random_state=random_state)
     train_pc = train_pc[:,train_keep]
     val_pc = val_pc[:,val_keep]
     if DEBUG:
@@ -63,7 +64,7 @@ def tsvd(temp_mat, npcs=250):
     return out_pcs
 
 
-def keep_correlated_pcs(train_pc, val_pc, alpha=0.01, n_boot = 50, do_plot = False):
+def keep_correlated_pcs(train_pc, val_pc, alpha=0.01, n_boot = 50, do_plot = False, random_state: Optional[int] = None):
     adjusted_alpha = alpha/(train_pc.shape[1]*val_pc.shape[1])/2 # /2 for 2-tail
     z_cutoff = norm.ppf(1-adjusted_alpha)
     ## get the real correlations
@@ -76,12 +77,13 @@ def keep_correlated_pcs(train_pc, val_pc, alpha=0.01, n_boot = 50, do_plot = Fal
         pear_res.shape[1],
         n_boot))
     train_shuff = deepcopy(train_pc)
+    rng = np.random.default_rng(random_state) if random_state is not None else np.random.default_rng()
     for b in range(n_boot):
         ## get the null distributions
         for col in range(train_pc.shape[1]):
             # go through the columns (ie: pcs)
             # & shuffle them 
-            train_shuff[:,col]=np.random.permutation(train_shuff[:,col])
+            train_shuff[:,col]=rng.permutation(train_shuff[:,col])
         boot_mat[:,:,b] = pearson(train_shuff,val_pc)[:train_shuff.shape[1],train_shuff.shape[1]:]
     mean_b = np.mean(boot_mat, axis=2)
     sd_b = np.std(boot_mat, axis=2)
