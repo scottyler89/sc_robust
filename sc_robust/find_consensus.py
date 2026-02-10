@@ -40,6 +40,23 @@ def find_pcs(train_mat: Any,
     if DEBUG:
         logger.debug("performing empirical validation")
     train_keep, val_keep = keep_correlated_pcs(train_pc, val_pc, do_plot=do_plot, random_state=random_state)
+    if not np.any(train_keep) or not np.any(val_keep):
+        # Avoid producing a zero-dimensional embedding (degenerate KNN search).
+        fallback = min(10, train_pc.shape[1], val_pc.shape[1])
+        if fallback <= 0:
+            raise ValueError(
+                "No PCs available after SVD (zero components). "
+                "Check pc_max and input matrix shapes."
+            )
+        logger.warning(
+            "No reproducible PCs found across splits; falling back to first %s PCs. "
+            "Consider increasing pc_max or revisiting feature selection if this persists.",
+            fallback,
+        )
+        train_keep = np.zeros(train_pc.shape[1], dtype=bool)
+        val_keep = np.zeros(val_pc.shape[1], dtype=bool)
+        train_keep[:fallback] = True
+        val_keep[:fallback] = True
     train_pc = train_pc[:,train_keep]
     val_pc = val_pc[:,val_keep]
     if DEBUG:
@@ -327,6 +344,7 @@ def indices_and_weights_to_graph(indices, weights, length):
     Skips self-edges and truncates preallocated arrays to the actual edge count
     to avoid zero-initialized artifacts.
     """
+    n_nodes = len(indices)
     r_lin = np.zeros((length), dtype=np.int64)
     c_lin = np.zeros((length), dtype=np.int64)
     w_lin = np.zeros((length), dtype=np.float32)
@@ -347,7 +365,7 @@ def indices_and_weights_to_graph(indices, weights, length):
     r_lin = r_lin[:counter]
     c_lin = c_lin[:counter]
     w_lin = w_lin[:counter]
-    return coo_matrix((w_lin,(r_lin, c_lin)))
+    return coo_matrix((w_lin,(r_lin, c_lin)), shape=(n_nodes, n_nodes))
 
 
 def combine_and_sort_distances(common_edges,

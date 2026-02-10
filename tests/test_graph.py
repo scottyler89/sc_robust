@@ -52,3 +52,11 @@ def test_symmetrization_options():
         G = build_single_graph(E, metric='cosine', symmetrize=sym_method)
         assert G.shape == (E.shape[0], E.shape[0])
 
+
+def test_build_single_graph_shape_is_square_on_ties():
+    """All-zero embeddings yield tied KNN scores; adjacency must still be n×n."""
+    from sc_robust.utils import build_single_graph
+
+    E = np.zeros((40, 4), dtype=np.float32)
+    G = build_single_graph(E, metric="cosine", symmetrize="none")
+    assert G.shape == (E.shape[0], E.shape[0])
