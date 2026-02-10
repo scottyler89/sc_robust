@@ -148,6 +148,7 @@ class robust(object):
                  pc_max: Optional[int] = 250,
                  norm_function: Optional[str] = "pf_log",
                  species: Optional[str] = "hsapiens",
+                 pc_validation: bool = True,
                  scratch_dir: Optional[Union[str, Path]] = None,
                  pre_remove_features: Optional[List[str]] = None,
                  pre_remove_pathways: Optional[List[str]] = None,
@@ -165,6 +166,7 @@ class robust(object):
         self.splits = splits
         self.pc_max = pc_max
         self.species = species
+        self.pc_validation = bool(pc_validation)
         self.scratch_dir = Path(scratch_dir) if scratch_dir is not None else None
         self.anticor_options: Dict[str, Any] = dict(anticor_kwargs or {})
         self.anticor_options.setdefault("pre_remove_features", pre_remove_features)
@@ -488,6 +490,7 @@ class robust(object):
             pc_max = self.pc_max,
             do_plot = self.do_plot,
             random_state=self.seed + 3,
+            validate=self.pc_validation,
         )
         return
     #

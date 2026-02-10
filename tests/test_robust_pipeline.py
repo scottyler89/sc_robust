@@ -31,6 +31,7 @@ def test_robust_pipeline_smoke(tmp_path, monkeypatch):
         gene_ids=adata.var["gene_ids"].tolist(),
         splits=[0.5, 0.5],
         pc_max=10,
+        pc_validation=False,
         scratch_dir=tmp_path,
         offline_mode=True,
         use_live_pathway_lookup=False,
@@ -43,4 +44,3 @@ def test_robust_pipeline_smoke(tmp_path, monkeypatch):
     assert (tmp_path / "val" / "kept_features_manifest.json").exists()
     assert "adata" in ro.provenance
     assert "deps" in ro.provenance
-

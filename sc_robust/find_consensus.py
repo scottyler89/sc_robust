@@ -22,7 +22,8 @@ def find_pcs(train_mat: Any,
              val_mat: Any,
              pc_max: Optional[int] = 250,
              do_plot: Optional[bool] = False,
-             random_state: Optional[int] = None):
+             random_state: Optional[int] = None,
+             validate: bool = True):
     if DEBUG:
         logger.debug("Decomposing training and validation matrices")
     ## Sanity check
@@ -39,26 +40,17 @@ def find_pcs(train_mat: Any,
     val_pc = tsvd(val_mat, npcs=pc_max)
     if DEBUG:
         logger.debug("performing empirical validation")
-    train_keep, val_keep = keep_correlated_pcs(train_pc, val_pc, do_plot=do_plot, random_state=random_state)
-    if not np.any(train_keep) or not np.any(val_keep):
-        # Avoid producing a zero-dimensional embedding (degenerate KNN search).
-        fallback = min(10, train_pc.shape[1], val_pc.shape[1])
-        if fallback <= 0:
+    if validate:
+        train_keep, val_keep = keep_correlated_pcs(train_pc, val_pc, do_plot=do_plot, random_state=random_state)
+        if not np.any(train_keep) or not np.any(val_keep):
             raise ValueError(
-                "No PCs available after SVD (zero components). "
-                "Check pc_max and input matrix shapes."
+                "No reproducible PCs found across splits during empirical validation. "
+                "This can happen on small/noisy datasets or when too few features are retained. "
+                "Options: increase `pc_max`, revisit feature selection parameters, or skip PC validation "
+                "(e.g., `robust(..., pc_validation=False)`)."
             )
-        logger.warning(
-            "No reproducible PCs found across splits; falling back to first %s PCs. "
-            "Consider increasing pc_max or revisiting feature selection if this persists.",
-            fallback,
-        )
-        train_keep = np.zeros(train_pc.shape[1], dtype=bool)
-        val_keep = np.zeros(val_pc.shape[1], dtype=bool)
-        train_keep[:fallback] = True
-        val_keep[:fallback] = True
-    train_pc = train_pc[:,train_keep]
-    val_pc = val_pc[:,val_keep]
+        train_pc = train_pc[:, train_keep]
+        val_pc = val_pc[:, val_keep]
     if DEBUG:
         logger.debug("final dimensionality training=%s validation=%s", train_pc.shape, val_pc.shape)
     return train_pc, val_pc
