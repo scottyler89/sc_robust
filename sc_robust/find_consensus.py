@@ -483,7 +483,7 @@ def find_one_graph(pcs, k=None, metric: Optional[str] = None, cosine: bool = Tru
     ## filter using slicer method to get mask
     local_mask = mask_knn_local_diff_dist(
         torch.tensor(distances), 
-        min_k=max(ceil(k/2),3)
+        min_k=10,
     )
     #for i in range(len(indexes)):
     #    if min(indexes[i])<0:
@@ -605,6 +605,10 @@ def mask_knn_local_diff_dist(dists, prior_mask=None, cutoff_threshold=3, min_k=1
     """
     if prior_mask is None:
         prior_mask = torch.ones_like(dists)
+    # If we don't have enough neighbors beyond min_k to compute discrete diffs,
+    # there is nothing to mask (we keep all currently included edges).
+    if dists.shape[1] <= min_k + 1:
+        return prior_mask.bool()
     if DEBUG:
         logger.debug("dists.shape=%s min_k=%s", getattr(dists, "shape", None), min_k)
         logger.debug(
