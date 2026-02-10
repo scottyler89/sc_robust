@@ -222,7 +222,7 @@ Phase A — Ergonomics + Safety (Low Risk)
 - [x] Replace library-level `print()` with `logging` (structured messages + progress hints).
 - [x] Avoid persistent global RNG side effects (scope/restore state; thread `random_state` where supported).
 - [ ] Eliminate global seeding entirely where possible (may require upstream support in `count_split`, `anticor_features`, `pymetis`).
-- [x] Clarify axis conventions with early validation and actionable errors (cells×genes expected).
+- [ ] Clarify axis conventions with early validation and actionable errors (cells×genes expected) across `robust` + graph helpers (currently enforced in DE/pseudobulk only).
 - [x] Surface anticor_features knobs end-to-end (scratch_dir, offline/id-bank/live-lookup) with clear failure messaging.
 
 Phase B — Reproducibility + Provenance
@@ -243,5 +243,12 @@ Phase C — Offline/HPC Execution Modes
 Phase D — API Conventions + Compatibility
 -----------------------------------------
 
-- [x] Normalize matrix axis conventions across modules (cells×genes everywhere) or require explicit `cell_axis` and validate.
+- [ ] Normalize matrix axis conventions across modules (cells×genes everywhere) or require explicit `cell_axis` and validate.
 - [x] Add small end-to-end smoke tests on tiny real-ish matrices (beyond unit mocks) to cover major workflows.
+
+Approval-Required Algorithm Changes (Do Not Implement Without Explicit OK)
+--------------------------------------------------------------------------
+
+- [ ] Decide a policy for small `k` in KNN masking (baseline can error when default `k=round(log(n))` yields `k<5`).
+- [ ] Decide whether to force graph adjacency shape to `n×n` when building COO (prevents non-square shapes in tie / "missing incoming index" cases).
+- [ ] Decide behavior for 2-split mode with AnnData + `count_split` (current baseline passes the AnnData object, which may not be supported by all `count_split` versions).
