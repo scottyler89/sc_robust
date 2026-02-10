@@ -19,6 +19,16 @@ def _circle_embedding(n: int) -> np.ndarray:
     theta = np.linspace(0.0, 2.0 * np.pi, num=n, endpoint=False)
     return np.stack([np.cos(theta), np.sin(theta)], axis=1).astype(np.float32)
 
+def test_build_single_graph_errors_on_too_few_samples():
+    from sc_robust.utils import build_single_graph
+
+    E = _circle_embedding(20)
+    with pytest.raises(ValueError) as excinfo:
+        build_single_graph(E, k=None, metric="cosine", symmetrize="none")
+    msg = str(excinfo.value)
+    assert "Too few samples" in msg
+    assert "n_samples" in msg
+
 
 def test_build_single_graph_cosine_and_l2():
     from sc_robust.utils import build_single_graph

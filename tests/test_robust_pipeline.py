@@ -84,7 +84,6 @@ def test_robust_pipeline_structured_builds_graph(tmp_path, monkeypatch):
 
     assert getattr(ro, "no_reproducible_pcs", False) is False
     assert ro.graph is not None
-    assert ro.graph.shape[0] == n_cells
-    assert ro.graph.shape[1] <= n_cells
+    assert ro.graph.shape == (n_cells, n_cells)
     assert ro.graph.nnz > 0
     assert ro.provenance.get("graph", {}).get("k_used") == max(int(round(np.log(n_cells), 0)), 10)

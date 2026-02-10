@@ -477,6 +477,11 @@ def find_one_graph(pcs, k=None, metric: Optional[str] = None, cosine: bool = Tru
     k = int(k)
     k = min(k, 200, n)
     k = max(k, min(10, n))
+    if n < 3 * k:
+        raise ValueError(
+            "Too few samples (cells) for robust KNN graph construction: "
+            f"n_samples={n} k_used={k}. Require n_samples >= 3*k_used ({3 * k})."
+        )
     # Determine metric for backward compatibility: cosine flag controls default unless metric provided
     chosen_metric = metric if metric is not None else ("cosine" if cosine else "ip")
     index = get_faiss_idx(pcs, metric=chosen_metric, cosine=cosine, use_gpu=use_gpu)
