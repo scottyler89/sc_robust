@@ -11,6 +11,9 @@ from anticor_features.anticor_features import get_anti_cor_genes
 import numpy as np
 from .normalization import *
 from .find_consensus import find_pcs, find_consensus_graph
+from importlib import metadata
+import hashlib
+import datetime
 
 logger = logging.getLogger(__name__)
 
@@ -173,6 +176,8 @@ class robust(object):
         if norm_function not in NORM:
             raise AssertionError("norm_function arg must be one of:"+", ".join(sorted(list(NORM.keys()))))
         self.norm_function = norm_function
+
+        self.provenance = self._build_provenance()
         self.do_splits()
         self.normalize()
         self.feature_select()
@@ -185,6 +190,72 @@ class robust(object):
         """Save the robust object to a file using dill."""
         with open(f, 'wb') as file:
             dill.dump(self, file)
+
+    def _hash_strings(self, values: List[str]) -> str:
+        h = hashlib.sha256()
+        for v in values:
+            h.update(v.encode("utf-8", errors="ignore"))
+            h.update(b"\0")
+        return h.hexdigest()
+
+    def _safe_pkg_version(self, name: str) -> Optional[str]:
+        try:
+            return metadata.version(name)
+        except Exception:
+            return None
+
+    def _build_provenance(self) -> Dict[str, Any]:
+        """Capture lightweight provenance for reproducibility and debugging."""
+        now = datetime.datetime.now(datetime.timezone.utc).isoformat()
+        adata = self.original_ad
+        n_obs = getattr(adata, "n_obs", None)
+        n_vars = getattr(adata, "n_vars", None)
+        x = getattr(adata, "X", None)
+        x_shape = tuple(getattr(x, "shape", ())) if x is not None else None
+
+        obs_names = getattr(adata, "obs_names", None)
+        var_names = getattr(adata, "var_names", None)
+        obs_hash = None
+        var_hash = None
+        try:
+            if obs_names is not None:
+                obs_hash = self._hash_strings([str(x) for x in list(obs_names)])
+            if var_names is not None:
+                var_hash = self._hash_strings([str(x) for x in list(var_names)])
+        except Exception:
+            # Hashing is best-effort; skip if AnnData-like does not support iteration safely.
+            pass
+
+        return {
+            "created_utc": now,
+            "seed": self.seed,
+            "splits": list(self.splits) if self.splits is not None else None,
+            "pc_max": self.pc_max,
+            "norm_function": self.norm_function,
+            "species": self.species,
+            "initial_k": self.initial_k,
+            "do_plot": bool(self.do_plot),
+            "adata": {
+                "n_obs": n_obs,
+                "n_vars": n_vars,
+                "X_shape": x_shape,
+                "obs_names_sha256": obs_hash,
+                "var_names_sha256": var_hash,
+            },
+            "deps": {
+                "sc_robust": self._safe_pkg_version("sc_robust"),
+                "anticor_features": self._safe_pkg_version("anticor_features"),
+                "count_split": self._safe_pkg_version("count_split"),
+                "numpy": self._safe_pkg_version("numpy"),
+                "scipy": self._safe_pkg_version("scipy"),
+                "torch": self._safe_pkg_version("torch"),
+                "faiss-cpu": self._safe_pkg_version("faiss-cpu"),
+                "faiss": self._safe_pkg_version("faiss"),
+                "igraph": self._safe_pkg_version("igraph"),
+                "leidenalg": self._safe_pkg_version("leidenalg"),
+            },
+            "anticor_options": dict(self.anticor_options),
+        }
     #
     #
     def do_splits(self):
@@ -194,6 +265,10 @@ class robust(object):
           - The incoming data are assumed to be cells x genes; count_split
             expects samples in columns, hence the transpose adjustments.
         """
+        if not hasattr(self.original_ad, "X"):
+            raise TypeError("in_ad must be AnnData-like and expose `.X` (cells×genes).")
+        if getattr(self.original_ad.X, "ndim", 2) != 2:
+            raise ValueError("in_ad.X must be a 2D matrix with shape (n_cells, n_genes).")
         with _temporary_numpy_seed(self.seed):
             if len(self.splits)==3:
                 self.train, self.val, self.test = multi_split(self.original_ad.X.T, percent_vect=self.splits, bin_size = 1000)
