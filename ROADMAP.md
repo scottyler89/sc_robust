@@ -219,27 +219,29 @@ offline/HPC friendliness, reproducibility, provenance, and clearer conventions.
 Phase A — Ergonomics + Safety (Low Risk)
 ----------------------------------------
 
-- [ ] Replace library-level `print()` with `logging` (structured messages + progress hints).
-- [ ] Guarantee no global RNG side effects (no `np.random.seed()` inside library code).
-- [ ] Clarify axis conventions with early validation and actionable errors (cells×genes expected).
-- [ ] Surface anticor_features knobs end-to-end (scratch_dir, offline/id-bank/live-lookup) with clear failure messaging.
+- [x] Replace library-level `print()` with `logging` (structured messages + progress hints).
+- [x] Avoid persistent global RNG side effects (scope/restore state; thread `random_state` where supported).
+- [ ] Eliminate global seeding entirely where possible (may require upstream support in `count_split`, `anticor_features`, `pymetis`).
+- [x] Clarify axis conventions with early validation and actionable errors (cells×genes expected).
+- [x] Surface anticor_features knobs end-to-end (scratch_dir, offline/id-bank/live-lookup) with clear failure messaging.
 
 Phase B — Reproducibility + Provenance
 --------------------------------------
 
-- [ ] Record first-class provenance on `robust` objects (inputs summary, hashes/IDs, params, dependency versions).
-- [ ] Persist feature-selection artifacts (kept feature order + manifest) when scratch_dir is used.
-- [ ] Make randomness fully deterministic from a single `random_state` across splitting + PC validation bootstraps.
+- [x] Record first-class provenance on `robust` objects (inputs summary, hashes/IDs, params, dependency versions).
+- [x] Persist feature-selection artifacts (kept feature order + manifest) when scratch_dir is used.
+- [x] Make randomness fully deterministic from a single `random_state` across splitting + PC validation bootstraps.
 
 Phase C — Offline/HPC Execution Modes
 -------------------------------------
 
-- [ ] Make network calls explicit and optional (default local/offline; fail fast when live lookup required).
+- [x] Make network calls explicit and optional (default local/offline; fail fast when live lookup required).
 - [ ] Add execution backend controls where multiprocessing is used (thread/process/sequential) + safe defaults for restricted runtimes.
-- [ ] Improve progress reporting for long jobs (step + elapsed + sizes).
+- [x] Improve progress reporting for long jobs (step + elapsed + sizes).
+- [ ] Extend progress reporting to DE/pathways modules.
 
 Phase D — API Conventions + Compatibility
 -----------------------------------------
 
-- [ ] Normalize matrix axis conventions across modules (cells×genes everywhere) or require explicit `cell_axis` and validate.
-- [ ] Add small end-to-end smoke tests on tiny real-ish matrices (beyond unit mocks) to cover major workflows.
+- [x] Normalize matrix axis conventions across modules (cells×genes everywhere) or require explicit `cell_axis` and validate.
+- [x] Add small end-to-end smoke tests on tiny real-ish matrices (beyond unit mocks) to cover major workflows.

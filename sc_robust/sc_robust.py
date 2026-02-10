@@ -183,14 +183,37 @@ class robust(object):
         start = time.perf_counter()
         self.do_splits()
         logger.info("step=do_splits elapsed_s=%.3f", time.perf_counter() - start)
+        self.provenance["splits_out"] = {
+            "train_shape": tuple(getattr(self.train, "shape", ())),
+            "val_shape": tuple(getattr(self.val, "shape", ())),
+            "test_shape": tuple(getattr(self.test, "shape", ())),
+        }
         self.normalize()
         logger.info("step=normalize elapsed_s=%.3f", time.perf_counter() - start)
         self.feature_select()
         logger.info("step=feature_select elapsed_s=%.3f", time.perf_counter() - start)
+        train_feat_idxs = getattr(self, "train_feat_idxs", None)
+        val_feat_idxs = getattr(self, "val_feat_idxs", None)
+        self.provenance["feature_selection"] = {
+            "train_selected_n": int(len(train_feat_idxs)) if train_feat_idxs is not None else 0,
+            "val_selected_n": int(len(val_feat_idxs)) if val_feat_idxs is not None else 0,
+            "scratch_dir": str(self.scratch_dir) if self.scratch_dir is not None else None,
+        }
         self.find_reproducible_pcs()
         logger.info("step=find_reproducible_pcs elapsed_s=%.3f", time.perf_counter() - start)
+        self.provenance["pcs"] = {
+            "train_pcs_shape": tuple(getattr(self.train_pcs, "shape", ())),
+            "val_pcs_shape": tuple(getattr(self.val_pcs, "shape", ())),
+        }
         self.get_consensus_graph()
         logger.info("step=get_consensus_graph elapsed_s=%.3f", time.perf_counter() - start)
+        self.provenance.setdefault("graph", {})
+        self.provenance["graph"].update(
+            {
+                "shape": tuple(getattr(self.graph, "shape", ())),
+                "nnz": int(getattr(self.graph, "nnz", 0)),
+            }
+        )
         return
     #
     #
@@ -481,4 +504,13 @@ class robust(object):
             self.val_pcs, 
             self.initial_k, 
             cosine = True, use_gpu = False)
+        n = int(self.train_pcs.shape[0])
+        k = self.initial_k
+        if k is None:
+            k = int(round(np.log(n), 0))
+        k = min(int(k), 200, n)
+        k = max(k, min(20, n))
+        self.provenance.setdefault("graph", {})
+        self.provenance["graph"]["metric"] = "cosine"
+        self.provenance["graph"]["k_used"] = int(k)
         return
