@@ -1,11 +1,27 @@
 import dill
 import anndata as ad
 from copy import copy, deepcopy
-from typing import List, Any, Optional
+import inspect
+import logging
+from pathlib import Path
+from typing import Any, Dict, List, Optional, Union
 from count_split.count_split import multi_split
 from anticor_features.anticor_features import get_anti_cor_genes
 from .normalization import *
 from .find_consensus import find_pcs, find_consensus_graph
+
+logger = logging.getLogger(__name__)
+
+
+def _call_get_anti_cor_genes(*args, **kwargs):
+    """Call `anticor_features.get_anti_cor_genes` filtering kwargs to supported keys.
+
+    This keeps sc_robust compatible across anticor_features versions as the API evolves.
+    """
+    sig = inspect.signature(get_anti_cor_genes)
+    allowed = set(sig.parameters)
+    filtered = {k: v for k, v in kwargs.items() if k in allowed and v is not None}
+    return get_anti_cor_genes(*args, **filtered)
 
 
 class robust(object):
@@ -32,6 +48,8 @@ class robust(object):
       initial_k: Optional K for initial KNN search (defaults to round(log n)).
       do_plot: If True, enables diagnostic plots during PC validation.
       seed: Random seed used for deterministic count-splitting.
+      scratch_dir: Optional directory for anticor_features to persist artifacts.
+      anticor_kwargs: Optional extra kwargs forwarded to anticor_features.
     """
     def __init__(self, 
                  in_ad: Any,
@@ -40,6 +58,13 @@ class robust(object):
                  pc_max: Optional[int] = 250,
                  norm_function: Optional[str] = "pf_log",
                  species: Optional[str] = "hsapiens",
+                 scratch_dir: Optional[Union[str, Path]] = None,
+                 pre_remove_features: Optional[List[str]] = None,
+                 pre_remove_pathways: Optional[List[str]] = None,
+                 offline_mode: Optional[bool] = None,
+                 id_bank_dir: Optional[Union[str, Path]] = None,
+                 use_live_pathway_lookup: Optional[bool] = None,
+                 anticor_kwargs: Optional[Dict[str, Any]] = None,
                  initial_k: Optional[int] = None,
                  do_plot: Optional[bool] = False,
                  seed = 123456) -> None:
@@ -50,6 +75,13 @@ class robust(object):
         self.splits = splits
         self.pc_max = pc_max
         self.species = species
+        self.scratch_dir = Path(scratch_dir) if scratch_dir is not None else None
+        self.anticor_options: Dict[str, Any] = dict(anticor_kwargs or {})
+        self.anticor_options.setdefault("pre_remove_features", pre_remove_features)
+        self.anticor_options.setdefault("pre_remove_pathways", pre_remove_pathways)
+        self.anticor_options.setdefault("offline_mode", offline_mode)
+        self.anticor_options.setdefault("id_bank_dir", str(id_bank_dir) if id_bank_dir is not None else None)
+        self.anticor_options.setdefault("use_live_pathway_lookup", use_live_pathway_lookup)
         self.do_plot = do_plot
         if norm_function not in NORM:
             raise AssertionError("norm_function arg must be one of:"+", ".join(sorted(list(NORM.keys()))))
@@ -132,14 +164,29 @@ class robust(object):
         else:
             # Otherwise, we assume the user has provided good IDs
             pass
+        train_scratch_dir = None
+        val_scratch_dir = None
+        if self.scratch_dir is not None:
+            train_scratch_dir = self.scratch_dir / "train"
+            val_scratch_dir = self.scratch_dir / "val"
+            train_scratch_dir.mkdir(parents=True, exist_ok=True)
+            val_scratch_dir.mkdir(parents=True, exist_ok=True)
         ## TODO: Handle case in which nothing was selected at FDR = 0.05 in train and/or val
-        self.train_feature_df = get_anti_cor_genes(self.train[subset_idxs,:].T,
-                                              self.gene_ids,
-                                              species=self.species)
+        self.train_feature_df = _call_get_anti_cor_genes(
+            self.train[subset_idxs, :].T,
+            self.gene_ids,
+            species=self.species,
+            scratch_dir=str(train_scratch_dir) if train_scratch_dir is not None else None,
+            **self.anticor_options,
+        )
         self.train_feat_idxs = np.where(self.train_feature_df["selected"]==True)[0]
-        self.val_feature_df = get_anti_cor_genes(self.val[subset_idxs,:].T,
-                                              self.gene_ids,
-                                              species=self.species)
+        self.val_feature_df = _call_get_anti_cor_genes(
+            self.val[subset_idxs, :].T,
+            self.gene_ids,
+            species=self.species,
+            scratch_dir=str(val_scratch_dir) if val_scratch_dir is not None else None,
+            **self.anticor_options,
+        )
         self.val_feat_idxs = np.where(self.val_feature_df["selected"]==True)[0]
     #
     #
@@ -166,5 +213,4 @@ class robust(object):
             self.initial_k, 
             cosine = True, use_gpu = False)
         return
-
 
