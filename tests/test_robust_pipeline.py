@@ -87,3 +87,36 @@ def test_robust_pipeline_structured_builds_graph(tmp_path, monkeypatch):
     assert ro.graph.shape == (n_cells, n_cells)
     assert ro.graph.nnz > 0
     assert ro.provenance.get("graph", {}).get("k_used") == max(int(round(np.log(n_cells), 0)), 10)
+
+
+def test_robust_pipeline_zero_selected_features_is_graceful(tmp_path, monkeypatch):
+    import sc_robust.sc_robust as sr
+
+    def fake_get_anti_cor_genes(exprs, feature_ids, species="hsapiens", scratch_dir=None, **kwargs):
+        feature_ids = list(feature_ids)
+        return pd.DataFrame({"selected": [False] * len(feature_ids)}, index=feature_ids)
+
+    monkeypatch.setattr(sr, "get_anti_cor_genes", fake_get_anti_cor_genes)
+
+    rng = np.random.default_rng(2)
+    n_cells = 120
+    n_genes = 60
+    X = rng.poisson(1.0, size=(n_cells, n_genes)).astype(np.int64)
+    X = sp.csr_matrix(X)
+    adata = ad.AnnData(X=X)
+    adata.var["gene_ids"] = [f"G{i}" for i in range(n_genes)]
+
+    ro = sr.robust(
+        adata,
+        gene_ids=adata.var["gene_ids"].tolist(),
+        splits=[0.34, 0.33, 0.33],
+        pc_max=30,
+        scratch_dir=tmp_path,
+        offline_mode=True,
+        use_live_pathway_lookup=False,
+        seed=123,
+    )
+
+    assert getattr(ro, "no_reproducible_pcs", False) is True
+    assert ro.graph is None
+    assert ro.provenance.get("status") == "no_reproducible_pcs"

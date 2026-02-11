@@ -30,7 +30,15 @@ def find_pcs(train_mat: Any,
         logger.debug("train_mat.shape=%s", getattr(train_mat, "shape", None))
         logger.debug("val_mat.shape=%s", getattr(val_mat, "shape", None))
         logger.debug("pc_max=%s", pc_max)
-    pc_max = min(pc_max,min(train_mat.shape), min(val_mat.shape))
+    pc_max = min(pc_max, min(train_mat.shape), min(val_mat.shape))
+    if pc_max < 1:
+        # This happens when feature selection selects 0 features for a split
+        # (train_mat or val_mat has 0 columns), or when matrices are otherwise degenerate.
+        # Return 0 PCs and let downstream logic handle the "no reproducible structure" case.
+        return (
+            np.zeros((train_mat.shape[0], 0), dtype=np.float32),
+            np.zeros((val_mat.shape[0], 0), dtype=np.float32),
+        )
     # Keep only the genes that are expressed in both
     train_idxs = sorted(list(set(train_mat.indices)))
     val_idxs = sorted(list(set(val_mat.indices)))
