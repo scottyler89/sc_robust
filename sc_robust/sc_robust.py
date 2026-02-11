@@ -272,6 +272,28 @@ class robust(object):
             self.provenance["feature_selection"].get("train_selected_n"),
             self.provenance["feature_selection"].get("val_selected_n"),
         )
+        if (
+            self.provenance["feature_selection"].get("train_selected_n", 0) == 0
+            or self.provenance["feature_selection"].get("val_selected_n", 0) == 0
+        ):
+            # Nothing to decompose -> previously this would crash inside TruncatedSVD(n_components=0).
+            # Skip gracefully and point users to the likely causes/mitigations.
+            self.no_reproducible_pcs = True
+            self.indices = None
+            self.distances = None
+            self.weights = None
+            self.graph = None
+            self.provenance["status"] = "no_features_selected"
+            logger.warning(
+                "No features selected in at least one split; skipping PC validation and graph construction. "
+                "train_selected_n=%s val_selected_n=%s. "
+                "This can happen if filtering is too strict or removes most genes. "
+                "Mitigations: relax feature-selection thresholds in anticor_features, set pre_remove_pathways=[], "
+                "or provide/adjust an offline ID bank via id_bank_dir=... .",
+                self.provenance["feature_selection"].get("train_selected_n"),
+                self.provenance["feature_selection"].get("val_selected_n"),
+            )
+            return
         self.find_reproducible_pcs()
         logger.info("step=find_reproducible_pcs elapsed_s=%.3f", time.perf_counter() - start)
         self.provenance["pcs"] = {

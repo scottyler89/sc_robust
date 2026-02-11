@@ -119,4 +119,4 @@ def test_robust_pipeline_zero_selected_features_is_graceful(tmp_path, monkeypatc
 
     assert getattr(ro, "no_reproducible_pcs", False) is True
     assert ro.graph is None
-    assert ro.provenance.get("status") == "no_reproducible_pcs"
+    assert ro.provenance.get("status") == "no_features_selected"
