@@ -1,6 +1,6 @@
 anndata
 count_split
-scikit_learn
+scikit-learn
 numpy
 scipy
 matplotlib
@@ -15,3 +15,5 @@ leidenalg
 pymetis
 dill
 pydeseq2
+pandas
+numba
