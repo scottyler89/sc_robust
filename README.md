@@ -188,7 +188,7 @@ HPC/offline recommended defaults
 - Consider setting:
   - `offline_mode=True` (hard guarantee: no network)
   - `use_live_pathway_lookup=False` (explicitly opt out of live GO/g:Profiler)
-  - `scratch_dir=...` to persist `anticor_features` artifacts and kept-feature manifests per split
+  - `scratch_dir=...` to persist `anticor_features` artifacts and kept-feature manifests per split (ordering + pathway-removal provenance when available)
   - `pre_remove_pathways=[]` if you want to skip pathway-based pre-removal entirely
 - Graph construction requires `n_cells >= 3*k_used` (with defaults, effectively `n_cells >= 30`), and the returned adjacency is always `n_cells×n_cells` in shape.
 

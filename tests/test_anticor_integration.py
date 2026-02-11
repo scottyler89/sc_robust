@@ -33,6 +33,25 @@ def test_call_get_anti_cor_genes_filters_kwargs(monkeypatch):
     assert "selected" in result
 
 
+def test_call_get_anti_cor_genes_drops_preflight_only(monkeypatch):
+    import sc_robust.sc_robust as sr
+
+    captured = {}
+
+    def fake_get_anti_cor_genes(exprs, feature_ids, species="hsapiens", preflight_only=False):
+        captured["preflight_only"] = preflight_only
+        return {"selected": np.array([], dtype=bool)}
+
+    monkeypatch.setattr(sr, "get_anti_cor_genes", fake_get_anti_cor_genes)
+
+    exprs = np.zeros((3, 4), dtype=float)
+    feature_ids = ["A", "B", "C", "D"]
+
+    sr._call_get_anti_cor_genes(exprs, feature_ids, preflight_only=True)
+
+    assert captured["preflight_only"] is False
+
+
 def test_anticor_failure_message_mentions_offline_hint():
     import sc_robust.sc_robust as sr
 
@@ -62,6 +81,10 @@ def test_feature_selection_manifest_written(tmp_path, monkeypatch):
             },
             index=list(feature_ids),
         )
+        df.attrs["pathway_removal"] = {
+            "pathway_source": "shipped_bank",
+            "species": species,
+        }
         return df
 
     monkeypatch.setattr(sr, "get_anti_cor_genes", fake_get_anti_cor_genes)
@@ -86,4 +109,6 @@ def test_feature_selection_manifest_written(tmp_path, monkeypatch):
     payload = json.loads(train_manifest.read_text(encoding="utf-8"))
     assert payload["n_features_selected"] == 2
     assert payload["kept_features_order"] == ["G1", "G3"]
+    assert payload["pathway_removal"]["pathway_source"] == "shipped_bank"
+    assert obj.provenance["feature_selection"]["train_pathway_removal"]["pathway_source"] == "shipped_bank"
     assert "feature_selection_manifest_train" in obj.provenance.get("artifacts", {})

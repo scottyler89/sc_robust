@@ -20,6 +20,29 @@ import warnings
 
 logger = logging.getLogger(__name__)
 
+try:
+    from numba import njit
+except Exception:  # pragma: no cover
+    njit = None
+
+if njit is not None:
+    @njit
+    def _seed_numba_np_random(seed: int) -> None:
+        np.random.seed(seed)
+else:  # pragma: no cover
+    _seed_numba_np_random = None
+
+
+def _seed_count_split_rng(seed: int) -> None:
+    """Seed RNG used inside count_split's numba-compiled functions (best-effort)."""
+    if _seed_numba_np_random is None:
+        return
+    try:
+        _seed_numba_np_random(int(seed))
+    except Exception:
+        # If numba is unavailable or seeding fails, proceed without deterministic splitting.
+        return
+
 
 def _call_get_anti_cor_genes(*args, **kwargs):
     """Call `anticor_features.get_anti_cor_genes` filtering kwargs to supported keys.
@@ -28,8 +51,25 @@ def _call_get_anti_cor_genes(*args, **kwargs):
     """
     sig = inspect.signature(get_anti_cor_genes)
     allowed = set(sig.parameters)
-    filtered = {k: v for k, v in kwargs.items() if k in allowed and v is not None}
+    # Prevent sc_robust from accidentally switching into "metadata-only" modes if
+    # downstream libraries add such flags (e.g. `preflight_only=True`).
+    blocked = {"preflight_only"}
+    filtered = {k: v for k, v in kwargs.items() if k in allowed and k not in blocked and v is not None}
     return get_anti_cor_genes(*args, **filtered)
+
+
+def _maybe_get_pathway_removal_metadata(feature_df) -> Optional[Dict[str, Any]]:
+    """Extract machine-readable pathway removal provenance if present."""
+    try:
+        attrs = getattr(feature_df, "attrs", None)
+    except Exception:
+        attrs = None
+    if not isinstance(attrs, dict):
+        return None
+    meta = attrs.get("pathway_removal", None)
+    if not isinstance(meta, dict):
+        return None
+    return meta
 
 
 @contextmanager
@@ -205,11 +245,13 @@ class robust(object):
             logger.info("step=feature_select elapsed_s=%.3f", time.perf_counter() - start)
         train_feat_idxs = getattr(self, "train_feat_idxs", None)
         val_feat_idxs = getattr(self, "val_feat_idxs", None)
-        self.provenance["feature_selection"] = {
-            "train_selected_n": int(len(train_feat_idxs)) if train_feat_idxs is not None else 0,
-            "val_selected_n": int(len(val_feat_idxs)) if val_feat_idxs is not None else 0,
-            "scratch_dir": str(self.scratch_dir) if self.scratch_dir is not None else None,
-        }
+        self.provenance.setdefault("feature_selection", {}).update(
+            {
+                "train_selected_n": int(len(train_feat_idxs)) if train_feat_idxs is not None else 0,
+                "val_selected_n": int(len(val_feat_idxs)) if val_feat_idxs is not None else 0,
+                "scratch_dir": str(self.scratch_dir) if self.scratch_dir is not None else None,
+            }
+        )
         self.find_reproducible_pcs()
         logger.info("step=find_reproducible_pcs elapsed_s=%.3f", time.perf_counter() - start)
         self.provenance["pcs"] = {
@@ -351,6 +393,9 @@ class robust(object):
             "kept_features_order": kept_features_order,
             "anticor_options": dict(self.anticor_options),
         }
+        pathway_removal = _maybe_get_pathway_removal_metadata(feature_df)
+        if pathway_removal is not None:
+            manifest["pathway_removal"] = pathway_removal
         out_path = scratch_dir / "kept_features_manifest.json"
         self._write_json(out_path, manifest)
         self.provenance.setdefault("artifacts", {})[f"feature_selection_manifest_{split}"] = str(out_path)
@@ -363,6 +408,7 @@ class robust(object):
           - The incoming data are assumed to be cells x genes; count_split
             expects samples in columns, hence the transpose adjustments.
         """
+        _seed_count_split_rng(self.seed)
         if len(self.splits)==3:
             self.train, self.val, self.test = multi_split(self.original_ad.X.T, percent_vect=self.splits, bin_size = 1000)
         elif len(self.splits)==2:
@@ -447,6 +493,9 @@ class robust(object):
                     anticor_options=self.anticor_options,
                 )
             ) from exc
+        train_pathway_removal = _maybe_get_pathway_removal_metadata(self.train_feature_df)
+        if train_pathway_removal is not None:
+            self.provenance.setdefault("feature_selection", {})["train_pathway_removal"] = train_pathway_removal
         self.train_feat_idxs = np.where(self.train_feature_df["selected"]==True)[0]
         self._record_feature_selection_manifest(
             split="train",
@@ -472,6 +521,9 @@ class robust(object):
                     anticor_options=self.anticor_options,
                 )
             ) from exc
+        val_pathway_removal = _maybe_get_pathway_removal_metadata(self.val_feature_df)
+        if val_pathway_removal is not None:
+            self.provenance.setdefault("feature_selection", {})["val_pathway_removal"] = val_pathway_removal
         self.val_feat_idxs = np.where(self.val_feature_df["selected"]==True)[0]
         self._record_feature_selection_manifest(
             split="val",
