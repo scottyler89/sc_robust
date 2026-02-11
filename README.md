@@ -104,7 +104,7 @@ G_l2 = build_single_graph(E, k=None, metric='l2', symmetrize='max')
 ```
 
 Notes:
-- The default `k` is round(log(n)) capped by 200 and by `n`.
+- The default `k` is `round(log(n))` floored to 10, capped by 200 and by `n` (and requires `n >= 3*k`).
 - Weighting uses the package’s per-node linear rescale; masking is adaptive per-node by distance differences.
 - Metrics:
   - `cosine` (default): inner product on L2-normalized rows.
@@ -176,11 +176,21 @@ pb_exprs, pb_meta = prep_sample_pseudobulk(
 Tips
 - The default neighbor count is adaptive: `k ≈ round(log(n))` but capped and masked locally.
 - The robust object exposes: `train/val/test` (normalized), `train_pcs/val_pcs`, selected features, and the final `graph`.
+- If no reproducible structure is found during PC validation, `ro.no_reproducible_pcs=True` and `ro.graph=None` (this is expected on null/no-structure data).
 
 Offline note
 - With recent `anticor_features`, pathway-based pre-removal uses shipped ID banks by default (no network) unless `use_live_pathway_lookup=True` or the bank is missing for your `species`.
 - If no ID bank is available for your species (or you request custom pathway lists), `anticor_features` may require live lookup unless you provide `id_bank_dir=...`.
 - If you need a guarantee that no live lookup can happen, pass `offline_mode=True` (recommended for HPC/sandboxed environments). When a live lookup would otherwise be required, sc_robust will now raise a single actionable error with fixes (disable live lookup, provide an ID bank, or skip pathway removal).
+
+HPC/offline recommended defaults
+- Use 3-way splits (train/val/test). If you pass 2-way splits, sc_robust will copy `val` into `test` and emit a warning: you must not use `test` for downstream DE in that case (double dipping).
+- Consider setting:
+  - `offline_mode=True` (hard guarantee: no network)
+  - `use_live_pathway_lookup=False` (explicitly opt out of live GO/g:Profiler)
+  - `scratch_dir=...` to persist `anticor_features` artifacts and kept-feature manifests per split
+  - `pre_remove_pathways=[]` if you want to skip pathway-based pre-removal entirely
+- Graph construction requires `n_cells >= 3*k_used` (with defaults, effectively `n_cells >= 30`), and the returned adjacency is always `n_cells×n_cells` in shape.
 
 API Reference
 -------------
