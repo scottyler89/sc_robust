@@ -190,13 +190,15 @@ HPC/offline recommended defaults
   - `use_live_pathway_lookup=False` (explicitly opt out of live GO/g:Profiler)
   - `scratch_dir=...` to persist `anticor_features` artifacts and kept-feature manifests per split (ordering + pathway-removal provenance when available)
   - `pre_remove_pathways=[]` if you want to skip pathway-based pre-removal entirely
+  - `count_split_quiet=True` to suppress noisy stdout from `count_split` (set `False` to see its progress prints)
+  - `count_split_bin_size=...` if you need to tune memory/performance during splitting
 - Graph construction requires `n_cells >= 3*k_used` (with defaults, effectively `n_cells >= 30`), and the returned adjacency is always `n_cells×n_cells` in shape.
 
 API Reference
 -------------
 
-- `sc_robust.robust(in_ad, gene_ids=None, splits=[0.325,0.325,0.35], pc_max=250, norm_function='pf_log', species='hsapiens', initial_k=None, do_plot=False, seed=123456)`
-  - Builds a consensus KNN graph from train/val splits. Attributes: `graph` (COO adjacency), `indices/distances/weights` (per-node lists), `train/val/test`, `train_pcs/val_pcs`, `train_feature_df/val_feature_df`.
+ - `sc_robust.robust(...)`
+   - Builds a consensus KNN graph from train/val splits. Key knobs: `scratch_dir`, `offline_mode`, `use_live_pathway_lookup`, `pre_remove_pathways`, `count_split_bin_size`, `count_split_quiet`. Attributes: `graph` (COO adjacency), `indices/distances/weights` (per-node lists), `train/val/test`, `train_pcs/val_pcs`, `train_feature_df/val_feature_df`.
 
 - `sc_robust.utils.perform_leiden_clustering(coo_mat, resolution_parameter=1.0)`
   - Converts COO to igraph and runs Leiden. Returns `(clusters_list, partition_obj, labels_array)`.

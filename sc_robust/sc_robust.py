@@ -3,12 +3,13 @@ import anndata as ad
 from copy import copy, deepcopy
 import inspect
 import logging
-from contextlib import contextmanager
+from contextlib import contextmanager, redirect_stdout, redirect_stderr
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Union
 from count_split.count_split import multi_split
 from anticor_features.anticor_features import get_anti_cor_genes
 import numpy as np
+import os
 from .normalization import *
 from .find_consensus import find_pcs, find_consensus_graph
 from importlib import metadata
@@ -42,6 +43,16 @@ def _seed_count_split_rng(seed: int) -> None:
     except Exception:
         # If numba is unavailable or seeding fails, proceed without deterministic splitting.
         return
+
+
+@contextmanager
+def _maybe_silence_stdout(enabled: bool):
+    if not enabled:
+        yield
+        return
+    with open(os.devnull, "w", encoding="utf-8") as devnull:
+        with redirect_stdout(devnull), redirect_stderr(devnull):
+            yield
 
 
 def _call_get_anti_cor_genes(*args, **kwargs):
@@ -198,8 +209,12 @@ class robust(object):
                  anticor_kwargs: Optional[Dict[str, Any]] = None,
                  initial_k: Optional[int] = None,
                  do_plot: Optional[bool] = False,
-                 seed = 123456) -> None:
+                 seed = 123456,
+                 count_split_bin_size: int = 1000,
+                 count_split_quiet: bool = True) -> None:
         self.seed = int(seed)
+        self.count_split_bin_size = int(count_split_bin_size)
+        self.count_split_quiet = bool(count_split_quiet)
         self.gene_ids = gene_ids
         self.initial_k = initial_k
         self.original_ad = in_ad
@@ -251,6 +266,11 @@ class robust(object):
                 "val_selected_n": int(len(val_feat_idxs)) if val_feat_idxs is not None else 0,
                 "scratch_dir": str(self.scratch_dir) if self.scratch_dir is not None else None,
             }
+        )
+        logger.info(
+            "feature_selection_done train_selected_n=%s val_selected_n=%s",
+            self.provenance["feature_selection"].get("train_selected_n"),
+            self.provenance["feature_selection"].get("val_selected_n"),
         )
         self.find_reproducible_pcs()
         logger.info("step=find_reproducible_pcs elapsed_s=%.3f", time.perf_counter() - start)
@@ -409,19 +429,40 @@ class robust(object):
             expects samples in columns, hence the transpose adjustments.
         """
         _seed_count_split_rng(self.seed)
-        if len(self.splits)==3:
-            self.train, self.val, self.test = multi_split(self.original_ad.X.T, percent_vect=self.splits, bin_size = 1000)
-        elif len(self.splits)==2:
-            # count_split expects samples in columns (cells) and variables in rows (genes).
-            # AnnData stores X as cells×genes, so we pass X.T here for consistency with 3-way splits.
-            self.train, self.val = multi_split(self.original_ad.X.T, percent_vect=self.splits, bin_size = 1000)
-            self.test = copy(self.val)
-        else:
-            raise AssertionError("Number of splits must be 2 or 3.")
+        logger.info(
+            "count_split_start splits=%s bin_size=%s quiet=%s",
+            self.splits,
+            self.count_split_bin_size,
+            self.count_split_quiet,
+        )
+        with _maybe_silence_stdout(self.count_split_quiet):
+            if len(self.splits)==3:
+                self.train, self.val, self.test = multi_split(
+                    self.original_ad.X.T,
+                    percent_vect=self.splits,
+                    bin_size=self.count_split_bin_size,
+                )
+            elif len(self.splits)==2:
+                # count_split expects samples in columns (cells) and variables in rows (genes).
+                # AnnData stores X as cells×genes, so we pass X.T here for consistency with 3-way splits.
+                self.train, self.val = multi_split(
+                    self.original_ad.X.T,
+                    percent_vect=self.splits,
+                    bin_size=self.count_split_bin_size,
+                )
+                self.test = copy(self.val)
+            else:
+                raise AssertionError("Number of splits must be 2 or 3.")
         # The count splitting assumes samples (cells) are in columns, but convention has flipped now
         self.train = self.train.T
         self.val = self.val.T
         self.test = self.test.T
+        logger.info(
+            "count_split_done train_shape=%s val_shape=%s test_shape=%s",
+            tuple(getattr(self.train, "shape", ())),
+            tuple(getattr(self.val, "shape", ())),
+            tuple(getattr(self.test, "shape", ())),
+        )
         self.train_counts = self.train.copy()
         self.val_counts = self.val.copy()
         self.test_counts = self.test.copy()
