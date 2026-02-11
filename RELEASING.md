@@ -13,17 +13,22 @@ This repo uses lightweight SemVer tags for published releases.
    - Edit `sc_robust/_version.py`
 2. Run tests:
    - `python -m pytest -q`
-3. Commit:
+3. Build (PyPI artifacts):
+   - `python -m pip install -U build twine`
+   - `python -m build`
+   - `python -m twine check dist/*`
+4. Commit:
    - `git add sc_robust/_version.py`
    - `git commit -m "Release vX.Y.Z"`
-4. Tag (annotated):
+5. Tag (annotated):
    - `git tag -a vX.Y.Z -m "sc_robust vX.Y.Z"`
-5. Push:
+6. Push:
    - `git push origin main`
    - `git push origin vX.Y.Z`
+7. Upload to PyPI:
+   - `python -m twine upload dist/*`
 
 ## Notes
 
 - Keep tags immutable (never retag a released version); bump the patch version if you need a quick follow-up.
 - If you publish to PyPI/Conda, build artifacts should be generated from the tagged commit.
-

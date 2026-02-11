@@ -1,0 +1,37 @@
+[build-system]
+requires = ["setuptools>=64", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "sc_robust"
+dynamic = ["version", "dependencies", "readme"]
+description = "A statistically robust pipeline for building cell-cell graphs from single cell RNAseq"
+requires-python = ">=3.10"
+authors = [{ name = "Scott Tyler", email = "scottyler89@gmail.com" }]
+license = { text = "AGPL-3.0-only" }
+classifiers = [
+  "Programming Language :: Python :: 3",
+  "License :: OSI Approved :: GNU Affero General Public License v3",
+  "Operating System :: OS Independent",
+]
+
+[project.urls]
+Homepage = "https://github.com/scottyler89/sc_robust"
+
+[tool.setuptools]
+include-package-data = true
+
+[tool.setuptools.packages.find]
+include = ["sc_robust*"]
+
+[tool.setuptools.dynamic]
+version = { attr = "sc_robust._version.__version__" }
+readme = { file = ["README.md"], content-type = "text/markdown" }
+dependencies = { file = ["requirements.txt"] }
+
+[tool.setuptools.package-data]
+sc_robust = [
+  "data/pathways/*.gmt",
+  "data/ensg_annotations_abbreviated.txt",
+]
+
