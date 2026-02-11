@@ -13,7 +13,7 @@ This repo uses lightweight SemVer tags for published releases.
    - Edit `sc_robust/_version.py`
 2. Run tests:
    - `python -m pytest -q`
-3. Build (PyPI artifacts):
+3. Build (PyPI artifacts) locally (optional sanity check):
    - `python -m pip install -U build twine`
    - `python -m build`
    - `python -m twine check dist/*`
@@ -25,8 +25,9 @@ This repo uses lightweight SemVer tags for published releases.
 6. Push:
    - `git push origin main`
    - `git push origin vX.Y.Z`
-7. Upload to PyPI:
-   - `python -m twine upload dist/*`
+7. Upload to PyPI (CI):
+   - Pushing a `vX.Y.Z` tag triggers GitHub Actions to build + publish via trusted publishing (OIDC).
+   - One-time setup in PyPI: add a “Trusted Publisher” for this repo/environment.
 
 ## Notes
 
