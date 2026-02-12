@@ -95,6 +95,7 @@ def test_run_gene_modules_from_scratch_dir_writes_outputs(tmp_path):
     assert out["gene_edges_pos"].exists()
     assert out["gene_edges_neg"].exists()
     assert out["gene_module_antagonism"].exists()
+    assert out["report_json"].exists()
 
     df = pd.read_csv(out["gene_modules"], sep="\t")
     assert set(df.columns) >= {"gene_id", "module_id", "degree_pos", "strength_pos"}

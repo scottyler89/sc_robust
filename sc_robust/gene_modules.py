@@ -17,6 +17,10 @@ _DEFAULT_EDGE_WEIGHT_EPS = 1e-6
 _DEFAULT_EDGE_WEIGHT_MIN = 1e-3
 
 
+def _write_report_json(out_path: Path, payload: Dict[str, Any]) -> None:
+    out_path.write_text(json.dumps(payload, indent=2, sort_keys=True, default=str), encoding="utf-8")
+
+
 def _edge_weight_from_excess(
     *,
     rho: np.ndarray,
@@ -479,14 +483,31 @@ def run_replicated_gene_modules_for_cohort(
 
     if nodes.empty:
         replicated_modules_path = out_dir / "replicated_modules.tsv.gz"
-        pd.DataFrame(columns=["replicated_module_id", "gene_id", "support_n_samples"]).to_csv(
+        empty_support = pd.DataFrame(columns=["replicated_module_id", "gene_id", "support_n_samples"])
+        empty_support.to_csv(
             replicated_modules_path, sep="\t", index=False, compression="gzip"
         )
         instances_path = out_dir / "replicated_module_instances.tsv.gz"
         pd.DataFrame(columns=["sample", "module_id", "replicated_module_id", "n_genes"]).to_csv(
             instances_path, sep="\t", index=False, compression="gzip"
         )
-        return {"replicated_modules": replicated_modules_path, "replicated_module_instances": instances_path}
+        report_path = out_dir / "replicated_modules.report.json"
+        _write_report_json(
+            report_path,
+            {
+                "artifacts": {
+                    "replicated_modules_tsv_gz": str(replicated_modules_path),
+                    "replicated_module_instances_tsv_gz": str(instances_path),
+                },
+                "params": {"jaccard_min": float(jaccard_min), "resolution": float(resolution)},
+                "summary": {"n_replicated_modules": 0, "n_gene_rows": 0},
+            },
+        )
+        return {
+            "replicated_modules": replicated_modules_path,
+            "replicated_module_instances": instances_path,
+            "report_json": report_path,
+        }
 
     # Build module-overlap adjacency; fall back to all-singletons if no edges.
     if edges.empty:
@@ -528,7 +549,26 @@ def run_replicated_gene_modules_for_cohort(
     replicated_modules_path = out_dir / "replicated_modules.tsv.gz"
     support.to_csv(replicated_modules_path, sep="\t", index=False, compression="gzip")
 
-    return {"replicated_modules": replicated_modules_path, "replicated_module_instances": instances_path}
+    report_path = out_dir / "replicated_modules.report.json"
+    _write_report_json(
+        report_path,
+        {
+            "artifacts": {
+                "replicated_modules_tsv_gz": str(replicated_modules_path),
+                "replicated_module_instances_tsv_gz": str(instances_path),
+            },
+            "params": {"jaccard_min": float(jaccard_min), "resolution": float(resolution)},
+            "summary": {
+                "n_replicated_modules": int(support["replicated_module_id"].nunique()),
+                "n_gene_rows": int(support.shape[0]),
+            },
+        },
+    )
+    return {
+        "replicated_modules": replicated_modules_path,
+        "replicated_module_instances": instances_path,
+        "report_json": report_path,
+    }
 
 
 def _load_sample_module_antagonism(sample_out_dir: Path) -> pd.DataFrame:
@@ -617,7 +657,7 @@ def run_replicated_module_antagonism_for_cohort(
 
     if not rows:
         out_path = out_dir / "replicated_module_antagonism.tsv.gz"
-        pd.DataFrame(
+        empty = pd.DataFrame(
             columns=[
                 "replicated_module_a",
                 "replicated_module_b",
@@ -627,7 +667,16 @@ def run_replicated_module_antagonism_for_cohort(
                 "mean_edge_density",
                 "mean_n_edges",
             ]
-        ).to_csv(out_path, sep="\t", index=False, compression="gzip")
+        )
+        empty.to_csv(out_path, sep="\t", index=False, compression="gzip")
+        report_path = out_dir / "replicated_module_antagonism.report.json"
+        _write_report_json(
+            report_path,
+            {
+                "artifacts": {"replicated_module_antagonism_tsv_gz": str(out_path)},
+                "summary": {"n_edges": 0, "max_samples_support": 0},
+            },
+        )
         return out_path
 
     all_df = pd.concat(rows, axis=0, ignore_index=True)
@@ -652,6 +701,17 @@ def run_replicated_module_antagonism_for_cohort(
 
     out_path = out_dir / "replicated_module_antagonism.tsv.gz"
     agg.to_csv(out_path, sep="\t", index=False, compression="gzip")
+    report_path = out_dir / "replicated_module_antagonism.report.json"
+    _write_report_json(
+        report_path,
+        {
+            "artifacts": {"replicated_module_antagonism_tsv_gz": str(out_path)},
+            "summary": {
+                "n_edges": int(agg.shape[0]),
+                "max_samples_support": int(agg["n_samples_support"].max()) if not agg.empty else 0,
+            },
+        },
+    )
     return out_path
 
 
@@ -694,11 +754,38 @@ def run_gene_module_meta_analysis_for_cohort(
         out_dir,
         replicated_instances_path=rep_paths["replicated_module_instances"],
     )
+    report_path = out_dir / "gene_module_meta_analysis.report.json"
+    _write_report_json(
+        report_path,
+        {
+            "artifacts": {
+                "gene_modules_manifest_tsv_gz": str(out_dir / "gene_modules_manifest.tsv.gz"),
+                "replicated_modules_tsv_gz": str(rep_paths["replicated_modules"]),
+                "replicated_module_instances_tsv_gz": str(rep_paths["replicated_module_instances"]),
+                "replicated_module_antagonism_tsv_gz": str(antagonism_path),
+                "replicated_modules_report_json": str(rep_paths.get("report_json", "")),
+                "replicated_module_antagonism_report_json": str(out_dir / "replicated_module_antagonism.report.json"),
+            },
+            "params": {
+                "split_mode": split_mode,
+                "chunk_rows": int(chunk_rows),
+                "module_resolution": float(module_resolution),
+                "k_gene": int(k_gene) if k_gene is not None else None,
+                "min_k_gene": int(min_k_gene),
+                "max_k_gene": int(max_k_gene),
+                "persist_edges": bool(persist_edges),
+                "reuse_existing_edges": bool(reuse_existing_edges),
+                "replication_jaccard_min": float(replication_jaccard_min),
+                "replication_resolution": float(replication_resolution),
+            },
+        },
+    )
     return {
         "gene_modules_manifest": out_dir / "gene_modules_manifest.tsv.gz",
         "replicated_modules": rep_paths["replicated_modules"],
         "replicated_module_instances": rep_paths["replicated_module_instances"],
         "replicated_module_antagonism": antagonism_path,
+        "report_json": report_path,
     }
 
 
@@ -1313,10 +1400,32 @@ def run_gene_modules_from_scratch_dir(
         negative_edges=neg,
     )
 
+    report_path = out_dir / "gene_modules.report.json"
+    _write_report_json(
+        report_path,
+        {
+            "artifacts": {k: v for k, v in artifact_paths.items() if v},
+            "params": params,
+            "summary": {
+                "n_genes": int(art_train.n_features),
+                "n_positive_edges": int(pos.shape[0]),
+                "n_negative_edges": int(neg.shape[0]),
+                "n_modules": int(pd.Series(labels).nunique()),
+                "merge_stats": merge_stats,
+            },
+            "source": {
+                "scratch_dir": str(scratch_dir),
+                "train_spearman_h5": str(train_h5),
+                "val_spearman_h5": str(val_h5),
+            },
+        },
+    )
+
     out_paths: Dict[str, Path] = {
         "gene_modules": modules_path,
         "module_stats": stats_path,
         "gene_module_antagonism": antagonism_path,
+        "report_json": report_path,
     }
     if persist_edges:
         out_paths.update({"gene_edges_pos": edge_pos_path, "gene_edges_neg": edge_neg_path})
