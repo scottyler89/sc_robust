@@ -257,6 +257,28 @@ Phase 0 — Spec + Schema Lock
   - HDF5 path, `schema_version`, `provenance_json` hash, `Cpos/Cneg`, and thresholds used for any downstream filtering.
 - [ ] Decide file format defaults (TSV.GZ vs Parquet) and naming conventions under an output root directory.
 
+Single-Dataset “Turn-Key” Module Discovery (Plugin)
+---------------------------------------------------
+
+In addition to cross-sample replication, provide a simple single-dataset path:
+
+- Input: a single `spearman.hdf5` (or a train/val pair under a single scratch dir).
+- Output: gene modules + antagonism summaries + provenance-rich manifests.
+- Rationale: auto-identifying gene programs/modules is useful even without a cohort meta-analysis.
+
+Tasks:
+- [ ] Implement `sc_robust.gene_modules` helpers:
+  - `read_spearman_h5(...)` (IDs + cutoffs + provenance)
+  - `extract_thresholded_edges(...)` (Cpos/Cneg gating)
+  - `reweight_edges_local(...)` (optional local scaling / SNN weights)
+  - `run_leiden_gene_modules(...)` (positive graph → modules)
+  - `summarize_module_antagonism(...)` (negative graph summaries)
+- [ ] Provide “drop-in” convenience wrappers for existing pipelines:
+  - accept a `scratch_dir` produced by `robust(..., scratch_dir=...)` and auto-find per-split `spearman.hdf5`.
+  - produce `modules.tsv.gz` + `module_stats.json` in that same scratch dir.
+- [ ] Ensure outputs include pointers to:
+  - `meta/provenance_json`, `Cpos/Cneg`, `feature_ids_kept`, and the exact weighting/Leiden parameters used.
+
 Phase 1 — Preflight + Indexing (No Biology)
 -------------------------------------------
 
