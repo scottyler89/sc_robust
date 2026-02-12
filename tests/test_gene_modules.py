@@ -107,3 +107,42 @@ def test_run_gene_modules_from_scratch_dir_writes_outputs(tmp_path):
     assert "source" in payload
     assert "train" in payload["source"]
     assert "provenance_fields" in payload["source"]["train"]
+
+
+def test_run_gene_modules_for_cohort_writes_manifest(tmp_path):
+    import sc_robust.gene_modules as gm
+
+    feature_ids = ["G0", "G1", "G2", "G3"]
+    rho = np.array(
+        [
+            [1.0, 0.7, 0.1, -0.8],
+            [0.7, 1.0, 0.6, -0.2],
+            [0.1, 0.6, 1.0, -0.6],
+            [-0.8, -0.2, -0.6, 1.0],
+        ],
+        dtype=np.float32,
+    )
+
+    scratch1 = tmp_path / "S1"
+    (scratch1 / "train").mkdir(parents=True, exist_ok=True)
+    (scratch1 / "val").mkdir(parents=True, exist_ok=True)
+    _write_toy_spearman_h5(scratch1 / "train" / "spearman.hdf5", feature_ids=feature_ids, rho=rho, cpos=0.5, cneg=-0.5)
+    _write_toy_spearman_h5(scratch1 / "val" / "spearman.hdf5", feature_ids=feature_ids, rho=rho, cpos=0.5, cneg=-0.5)
+
+    scratch2 = tmp_path / "S2"
+    (scratch2 / "train").mkdir(parents=True, exist_ok=True)
+    (scratch2 / "val").mkdir(parents=True, exist_ok=True)
+    _write_toy_spearman_h5(scratch2 / "train" / "spearman.hdf5", feature_ids=feature_ids, rho=rho, cpos=0.5, cneg=-0.5)
+    _write_toy_spearman_h5(scratch2 / "val" / "spearman.hdf5", feature_ids=feature_ids, rho=rho, cpos=0.5, cneg=-0.5)
+
+    out_dir = tmp_path / "out"
+    manifest = gm.run_gene_modules_for_cohort(
+        [scratch1, scratch2],
+        out_dir=out_dir,
+        split_mode="union",
+        min_k_gene=1,
+        max_k_gene=10,
+        persist_edges=False,
+    )
+    assert set(manifest["sample"].tolist()) == {"S1", "S2"}
+    assert (out_dir / "gene_modules_manifest.tsv.gz").exists()

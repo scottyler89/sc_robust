@@ -152,6 +152,67 @@ def index_spearman_scratch_dirs(
     return pd.DataFrame(rows)
 
 
+def run_gene_modules_for_cohort(
+    scratch_dirs: Sequence[Union[str, Path]],
+    *,
+    out_dir: Union[str, Path],
+    split_mode: str = "union",
+    chunk_rows: int = 512,
+    resolution: float = 1.0,
+    k_gene: Optional[int] = None,
+    min_k_gene: int = 10,
+    max_k_gene: int = 200,
+    persist_edges: bool = True,
+) -> pd.DataFrame:
+    """Batch runner: process many scratch dirs and write per-sample gene artifacts.
+
+    Returns a manifest dataframe with per-sample status and artifact paths.
+    """
+    out_dir = Path(out_dir)
+    out_dir.mkdir(parents=True, exist_ok=True)
+
+    manifest_rows: List[Dict[str, Any]] = []
+    for scratch in scratch_dirs:
+        scratch = Path(scratch)
+        sample = scratch.name
+        sample_out = out_dir / sample
+        try:
+            paths = run_gene_modules_from_scratch_dir(
+                scratch,
+                split_mode=split_mode,
+                chunk_rows=chunk_rows,
+                resolution=resolution,
+                k_gene=k_gene,
+                min_k_gene=min_k_gene,
+                max_k_gene=max_k_gene,
+                persist_edges=persist_edges,
+                out_dir=sample_out,
+            )
+            manifest_rows.append(
+                {
+                    "sample": sample,
+                    "scratch_dir": str(scratch),
+                    "status": "ok",
+                    **{k: str(v) for k, v in paths.items()},
+                }
+            )
+        except Exception as exc:
+            logger.exception("gene_modules cohort failed sample=%s", sample)
+            manifest_rows.append(
+                {
+                    "sample": sample,
+                    "scratch_dir": str(scratch),
+                    "status": "failed",
+                    "error": str(exc),
+                }
+            )
+
+    manifest = pd.DataFrame(manifest_rows)
+    manifest_path = out_dir / "gene_modules_manifest.tsv.gz"
+    manifest.to_csv(manifest_path, sep="\t", index=False, compression="gzip")
+    return manifest
+
+
 def _iter_thresholded_edges_from_dense_block(
     block: np.ndarray,
     *,
