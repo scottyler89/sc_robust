@@ -146,16 +146,18 @@ def _iter_thresholded_edges_from_dense_block(
             start = 0
         if start >= n_cols:
             continue
-        # Positive edges
-        pos = np.where(row[start:] >= cpos)[0]
-        for j_local in pos.tolist():
-            j = start + j_local
-            yield i, j, float(row[j])
-        # Negative edges
-        neg = np.where(row[start:] <= cneg)[0]
-        for j_local in neg.tolist():
-            j = start + j_local
-            yield i, j, float(row[j])
+        # Fast path: use vectorized index extraction on the slice, avoiding per-element python work.
+        row_slice = row[start:]
+        pos_idx = np.flatnonzero(row_slice >= cpos)
+        if pos_idx.size:
+            js = pos_idx + start
+            for j in js.tolist():
+                yield i, int(j), float(row[int(j)])
+        neg_idx = np.flatnonzero(row_slice <= cneg)
+        if neg_idx.size:
+            js = neg_idx + start
+            for j in js.tolist():
+                yield i, int(j), float(row[int(j)])
 
 
 def extract_thresholded_edges(
