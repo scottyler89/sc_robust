@@ -390,6 +390,46 @@ def _write_module_stats_json(
     out_path.write_text(json.dumps(payload, indent=2, sort_keys=True, default=str), encoding="utf-8")
 
 
+def summarize_gene_module_antagonism(
+    negative_edges: pd.DataFrame,
+    *,
+    labels: np.ndarray,
+) -> pd.DataFrame:
+    """Summarize negative-edge structure between positive gene modules."""
+    if negative_edges.empty:
+        return pd.DataFrame(
+            columns=["module_a", "module_b", "n_edges", "mean_rho", "edge_density", "size_a", "size_b"]
+        )
+    labels = np.asarray(labels)
+    i = negative_edges["i"].to_numpy(dtype=np.int64, copy=False)
+    j = negative_edges["j"].to_numpy(dtype=np.int64, copy=False)
+    mi = labels[i]
+    mj = labels[j]
+    mask = mi != mj
+    if not np.any(mask):
+        return pd.DataFrame(
+            columns=["module_a", "module_b", "n_edges", "mean_rho", "edge_density", "size_a", "size_b"]
+        )
+
+    mi = mi[mask]
+    mj = mj[mask]
+    module_a = np.minimum(mi, mj).astype(int)
+    module_b = np.maximum(mi, mj).astype(int)
+    rho_col = "rho_mean" if "rho_mean" in negative_edges.columns else "rho"
+    rho = negative_edges.loc[mask, rho_col].to_numpy(dtype=np.float32, copy=False)
+
+    df = pd.DataFrame({"module_a": module_a, "module_b": module_b, "rho": rho})
+    agg = df.groupby(["module_a", "module_b"], as_index=False)["rho"].agg(n_edges="count", mean_rho="mean")
+
+    sizes = pd.Series(labels).value_counts().to_dict()
+    agg["size_a"] = agg["module_a"].map(lambda m: int(sizes.get(m, 0)))
+    agg["size_b"] = agg["module_b"].map(lambda m: int(sizes.get(m, 0)))
+    denom = (agg["size_a"] * agg["size_b"]).replace(0, np.nan)
+    agg["edge_density"] = (agg["n_edges"] / denom).astype(np.float32)
+    agg["edge_density"] = agg["edge_density"].fillna(0.0)
+    return agg
+
+
 def run_gene_modules_from_scratch_dir(
     scratch_dir: Union[str, Path],
     *,
@@ -399,6 +439,7 @@ def run_gene_modules_from_scratch_dir(
     k_gene: Optional[int] = None,
     min_k_gene: int = 10,
     max_k_gene: int = 200,
+    persist_edges: bool = True,
     out_dir: Optional[Union[str, Path]] = None,
 ) -> Dict[str, Path]:
     """Turn-key gene module discovery from a `robust(..., scratch_dir=...)` directory."""
@@ -462,8 +503,18 @@ def run_gene_modules_from_scratch_dir(
         }
     )
 
-    modules_path = out_dir / "modules.tsv.gz"
+    modules_path = out_dir / "gene_modules.tsv.gz"
     modules_df.to_csv(modules_path, sep="\t", index=False, compression="gzip")
+
+    edge_pos_path = out_dir / "gene_edges_pos.tsv.gz"
+    edge_neg_path = out_dir / "gene_edges_neg.tsv.gz"
+    antagonism_path = out_dir / "gene_module_antagonism.tsv.gz"
+    if persist_edges:
+        pos.to_csv(edge_pos_path, sep="\t", index=False, compression="gzip")
+        neg.to_csv(edge_neg_path, sep="\t", index=False, compression="gzip")
+
+    antagonism_df = summarize_gene_module_antagonism(neg, labels=labels)
+    antagonism_df.to_csv(antagonism_path, sep="\t", index=False, compression="gzip")
 
     stats_path = out_dir / "module_stats.json"
     source_meta = {
@@ -487,9 +538,20 @@ def run_gene_modules_from_scratch_dir(
         },
         "edges": edge_meta,
     }
-    params = {"split_mode": split_mode, "chunk_rows": int(chunk_rows), "resolution": float(resolution)}
+    params = {
+        "split_mode": split_mode,
+        "chunk_rows": int(chunk_rows),
+        "resolution": float(resolution),
+        "persist_edges": bool(persist_edges),
+    }
     params.update({"k_gene": int(k_gene) if k_gene is not None else None, "min_k_gene": int(min_k_gene), "max_k_gene": int(max_k_gene)})
-    artifact_paths = {"modules_tsv_gz": str(modules_path), "module_stats_json": str(stats_path)}
+    artifact_paths = {
+        "gene_modules_tsv_gz": str(modules_path),
+        "gene_edges_pos_tsv_gz": str(edge_pos_path) if persist_edges else None,
+        "gene_edges_neg_tsv_gz": str(edge_neg_path) if persist_edges else None,
+        "gene_module_antagonism_tsv_gz": str(antagonism_path),
+        "module_stats_json": str(stats_path),
+    }
 
     _write_module_stats_json(
         stats_path,
@@ -501,4 +563,11 @@ def run_gene_modules_from_scratch_dir(
         negative_edges=neg,
     )
 
-    return {"modules": modules_path, "module_stats": stats_path}
+    out_paths: Dict[str, Path] = {
+        "gene_modules": modules_path,
+        "module_stats": stats_path,
+        "gene_module_antagonism": antagonism_path,
+    }
+    if persist_edges:
+        out_paths.update({"gene_edges_pos": edge_pos_path, "gene_edges_neg": edge_neg_path})
+    return out_paths

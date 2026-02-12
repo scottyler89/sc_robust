@@ -82,10 +82,20 @@ def test_run_gene_modules_from_scratch_dir_writes_outputs(tmp_path):
     _write_toy_spearman_h5(scratch / "train" / "spearman.hdf5", feature_ids=feature_ids, rho=rho, cpos=0.5, cneg=-0.5)
     _write_toy_spearman_h5(scratch / "val" / "spearman.hdf5", feature_ids=feature_ids, rho=rho, cpos=0.5, cneg=-0.5)
 
-    out = gm.run_gene_modules_from_scratch_dir(scratch, split_mode="union", resolution=1.0, min_k_gene=1, max_k_gene=10)
-    assert out["modules"].exists()
+    out = gm.run_gene_modules_from_scratch_dir(
+        scratch,
+        split_mode="union",
+        resolution=1.0,
+        min_k_gene=1,
+        max_k_gene=10,
+        persist_edges=True,
+    )
+    assert out["gene_modules"].exists()
     assert out["module_stats"].exists()
+    assert out["gene_edges_pos"].exists()
+    assert out["gene_edges_neg"].exists()
+    assert out["gene_module_antagonism"].exists()
 
-    df = pd.read_csv(out["modules"], sep="\t")
+    df = pd.read_csv(out["gene_modules"], sep="\t")
     assert set(df.columns) >= {"gene_id", "module_id", "degree_pos", "strength_pos"}
     assert df.shape[0] == 4
