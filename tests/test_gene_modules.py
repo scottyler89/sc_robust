@@ -197,3 +197,51 @@ def test_run_replicated_gene_modules_for_cohort_support_annotation(tmp_path):
     # Sample-unique genes are still present, annotated with support==1.
     assert int(rep.set_index("gene_id").loc["C", "support_n_samples"]) == 1
     assert int(rep.set_index("gene_id").loc["F", "support_n_samples"]) == 1
+
+
+def test_run_replicated_module_antagonism_for_cohort(tmp_path):
+    import pandas as pd
+    from sc_robust.gene_modules import run_replicated_module_antagonism_for_cohort
+
+    out_dir = tmp_path / "out"
+    out_dir.mkdir()
+
+    # Cohort manifest.
+    pd.DataFrame(
+        [
+            {"sample": "S1", "scratch_dir": "NA", "status": "ok"},
+            {"sample": "S2", "scratch_dir": "NA", "status": "ok"},
+        ]
+    ).to_csv(out_dir / "gene_modules_manifest.tsv.gz", sep="\t", index=False, compression="gzip")
+
+    # Replicated instances: map sample module IDs to replicated IDs.
+    pd.DataFrame(
+        [
+            {"sample": "S1", "module_id": 0, "replicated_module_id": 10, "n_genes": 3},
+            {"sample": "S1", "module_id": 1, "replicated_module_id": 11, "n_genes": 2},
+            {"sample": "S2", "module_id": 0, "replicated_module_id": 10, "n_genes": 3},
+            {"sample": "S2", "module_id": 2, "replicated_module_id": 11, "n_genes": 3},
+        ]
+    ).to_csv(out_dir / "replicated_module_instances.tsv.gz", sep="\t", index=False, compression="gzip")
+
+    # Per-sample antagonism summaries.
+    (out_dir / "S1").mkdir()
+    (out_dir / "S2").mkdir()
+    pd.DataFrame(
+        [
+            {"module_a": 0, "module_b": 1, "n_edges": 5, "mean_rho": -0.4, "edge_density": 0.2, "size_a": 3, "size_b": 2},
+        ]
+    ).to_csv(out_dir / "S1" / "gene_module_antagonism.tsv.gz", sep="\t", index=False, compression="gzip")
+    pd.DataFrame(
+        [
+            {"module_a": 0, "module_b": 2, "n_edges": 3, "mean_rho": -0.3, "edge_density": 0.1, "size_a": 3, "size_b": 3},
+        ]
+    ).to_csv(out_dir / "S2" / "gene_module_antagonism.tsv.gz", sep="\t", index=False, compression="gzip")
+
+    out_path = run_replicated_module_antagonism_for_cohort(out_dir)
+    df = pd.read_csv(out_path, sep="\t")
+    assert df.shape[0] == 1
+    row = df.iloc[0].to_dict()
+    assert int(row["replicated_module_a"]) == 10
+    assert int(row["replicated_module_b"]) == 11
+    assert int(row["n_samples_support"]) == 2

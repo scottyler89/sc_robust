@@ -531,6 +531,177 @@ def run_replicated_gene_modules_for_cohort(
     return {"replicated_modules": replicated_modules_path, "replicated_module_instances": instances_path}
 
 
+def _load_sample_module_antagonism(sample_out_dir: Path) -> pd.DataFrame:
+    path = sample_out_dir / "gene_module_antagonism.tsv.gz"
+    if not path.exists():
+        raise FileNotFoundError(f"Missing {path}")
+    df = pd.read_csv(path, sep="\t")
+    required = {"module_a", "module_b", "n_edges", "mean_rho", "edge_density", "size_a", "size_b"}
+    missing = required - set(df.columns)
+    if missing:
+        raise ValueError(f"{path} missing columns: {sorted(missing)}")
+    df = df[list(required)].copy()
+    df["module_a"] = df["module_a"].astype(int)
+    df["module_b"] = df["module_b"].astype(int)
+    df["n_edges"] = df["n_edges"].astype(int)
+    df["size_a"] = df["size_a"].astype(int)
+    df["size_b"] = df["size_b"].astype(int)
+    df["mean_rho"] = df["mean_rho"].astype(np.float32)
+    df["edge_density"] = df["edge_density"].astype(np.float32)
+    return df
+
+
+def run_replicated_module_antagonism_for_cohort(
+    out_dir: Union[str, Path],
+    *,
+    replicated_instances_path: Optional[Union[str, Path]] = None,
+) -> Path:
+    """Aggregate within-sample module antagonism into replicated-module antagonism across samples.
+
+    This strictly uses *negative* edges that were summarized between positive modules, then maps
+    sample module IDs -> replicated_module_id using `replicated_module_instances.tsv.gz`.
+    """
+    out_dir = Path(out_dir)
+    manifest_path = out_dir / "gene_modules_manifest.tsv.gz"
+    if not manifest_path.exists():
+        raise FileNotFoundError(f"Expected {manifest_path}")
+    manifest = pd.read_csv(manifest_path, sep="\t")
+    ok_samples = manifest.loc[manifest["status"] == "ok", "sample"].astype(str).tolist()
+
+    if replicated_instances_path is None:
+        replicated_instances_path = out_dir / "replicated_module_instances.tsv.gz"
+    replicated_instances_path = Path(replicated_instances_path)
+    if not replicated_instances_path.exists():
+        raise FileNotFoundError(f"Expected {replicated_instances_path}")
+    inst = pd.read_csv(replicated_instances_path, sep="\t")
+    required = {"sample", "module_id", "replicated_module_id"}
+    missing = required - set(inst.columns)
+    if missing:
+        raise ValueError(f"{replicated_instances_path} missing columns: {sorted(missing)}")
+    inst["sample"] = inst["sample"].astype(str)
+    inst["module_id"] = inst["module_id"].astype(int)
+    inst["replicated_module_id"] = inst["replicated_module_id"].astype(int)
+
+    rows: List[Dict[str, Any]] = []
+    for sample in ok_samples:
+        sample_out = out_dir / sample
+        antagonism = _load_sample_module_antagonism(sample_out)
+        module_to_rep = inst[inst["sample"] == sample].set_index("module_id")["replicated_module_id"].to_dict()
+        if antagonism.empty:
+            continue
+        rep_a = antagonism["module_a"].map(module_to_rep)
+        rep_b = antagonism["module_b"].map(module_to_rep)
+        keep = rep_a.notna() & rep_b.notna()
+        if not bool(keep.any()):
+            continue
+        tmp = antagonism.loc[keep].copy()
+        tmp["rep_a"] = rep_a.loc[keep].astype(int).to_numpy()
+        tmp["rep_b"] = rep_b.loc[keep].astype(int).to_numpy()
+        tmp["rep_module_a"] = np.minimum(tmp["rep_a"], tmp["rep_b"]).astype(int)
+        tmp["rep_module_b"] = np.maximum(tmp["rep_a"], tmp["rep_b"]).astype(int)
+        tmp["sample"] = sample
+        rows.append(
+            tmp[
+                [
+                    "sample",
+                    "rep_module_a",
+                    "rep_module_b",
+                    "n_edges",
+                    "mean_rho",
+                    "edge_density",
+                    "size_a",
+                    "size_b",
+                ]
+            ]
+        )
+
+    if not rows:
+        out_path = out_dir / "replicated_module_antagonism.tsv.gz"
+        pd.DataFrame(
+            columns=[
+                "replicated_module_a",
+                "replicated_module_b",
+                "n_samples_support",
+                "mean_mean_rho",
+                "median_mean_rho",
+                "mean_edge_density",
+                "mean_n_edges",
+            ]
+        ).to_csv(out_path, sep="\t", index=False, compression="gzip")
+        return out_path
+
+    all_df = pd.concat(rows, axis=0, ignore_index=True)
+    all_df = all_df.rename(columns={"rep_module_a": "replicated_module_a", "rep_module_b": "replicated_module_b"})
+
+    agg = (
+        all_df.groupby(["replicated_module_a", "replicated_module_b"], as_index=False)
+        .agg(
+            n_samples_support=("sample", "nunique"),
+            mean_mean_rho=("mean_rho", "mean"),
+            median_mean_rho=("mean_rho", "median"),
+            mean_edge_density=("edge_density", "mean"),
+            mean_n_edges=("n_edges", "mean"),
+        )
+        .sort_values(["n_samples_support", "mean_mean_rho"], ascending=[False, True])
+        .reset_index(drop=True)
+    )
+    agg["mean_mean_rho"] = agg["mean_mean_rho"].astype(np.float32)
+    agg["median_mean_rho"] = agg["median_mean_rho"].astype(np.float32)
+    agg["mean_edge_density"] = agg["mean_edge_density"].astype(np.float32)
+    agg["mean_n_edges"] = agg["mean_n_edges"].astype(np.float32)
+
+    out_path = out_dir / "replicated_module_antagonism.tsv.gz"
+    agg.to_csv(out_path, sep="\t", index=False, compression="gzip")
+    return out_path
+
+
+def run_gene_module_meta_analysis_for_cohort(
+    scratch_dirs: Sequence[Union[str, Path]],
+    *,
+    out_dir: Union[str, Path],
+    split_mode: str = "union",
+    chunk_rows: int = 512,
+    module_resolution: float = 1.0,
+    k_gene: Optional[int] = None,
+    min_k_gene: int = 10,
+    max_k_gene: int = 200,
+    persist_edges: bool = True,
+    reuse_existing_edges: bool = True,
+    replication_jaccard_min: float = 0.3,
+    replication_resolution: float = 1.0,
+) -> Dict[str, Path]:
+    """One-call cohort runner: per-sample modules -> replicated modules -> replicated antagonism."""
+    out_dir = Path(out_dir)
+    out_dir.mkdir(parents=True, exist_ok=True)
+    manifest = run_gene_modules_for_cohort(
+        scratch_dirs,
+        out_dir=out_dir,
+        split_mode=split_mode,
+        chunk_rows=chunk_rows,
+        resolution=module_resolution,
+        k_gene=k_gene,
+        min_k_gene=min_k_gene,
+        max_k_gene=max_k_gene,
+        persist_edges=persist_edges,
+        reuse_existing_edges=reuse_existing_edges,
+    )
+    rep_paths = run_replicated_gene_modules_for_cohort(
+        out_dir,
+        jaccard_min=replication_jaccard_min,
+        resolution=replication_resolution,
+    )
+    antagonism_path = run_replicated_module_antagonism_for_cohort(
+        out_dir,
+        replicated_instances_path=rep_paths["replicated_module_instances"],
+    )
+    return {
+        "gene_modules_manifest": out_dir / "gene_modules_manifest.tsv.gz",
+        "replicated_modules": rep_paths["replicated_modules"],
+        "replicated_module_instances": rep_paths["replicated_module_instances"],
+        "replicated_module_antagonism": antagonism_path,
+    }
+
+
 def _iter_thresholded_edges_from_dense_block(
     block: np.ndarray,
     *,
