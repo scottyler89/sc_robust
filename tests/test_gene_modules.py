@@ -82,7 +82,7 @@ def test_run_gene_modules_from_scratch_dir_writes_outputs(tmp_path):
     _write_toy_spearman_h5(scratch / "train" / "spearman.hdf5", feature_ids=feature_ids, rho=rho, cpos=0.5, cneg=-0.5)
     _write_toy_spearman_h5(scratch / "val" / "spearman.hdf5", feature_ids=feature_ids, rho=rho, cpos=0.5, cneg=-0.5)
 
-    out = gm.run_gene_modules_from_scratch_dir(scratch, split_mode="union", resolution=1.0)
+    out = gm.run_gene_modules_from_scratch_dir(scratch, split_mode="union", resolution=1.0, min_k_gene=1, max_k_gene=10)
     assert out["modules"].exists()
     assert out["module_stats"].exists()
 

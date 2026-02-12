@@ -272,7 +272,76 @@ def _union_split_edges(
     merged["agree_sign"] = True
     both = merged["present_train"] & merged["present_val"]
     merged.loc[both, "agree_sign"] = np.sign(merged.loc[both, "rho_train"]) == np.sign(merged.loc[both, "rho_val"])
+
+    # Sign-safe merge policy: if an edge appears in both but disagrees in sign, drop it.
+    merged = merged[~(both & (~merged["agree_sign"]))].copy()
+
+    merged["confidence"] = np.where(both, "both_splits", "single_split")
     return merged
+
+
+def _default_k_gene(n_genes: int, *, min_k: int = 10, max_k: int = 200) -> int:
+    if n_genes <= 1:
+        return 0
+    k = int(round(np.log(n_genes), 0))
+    k = max(int(min_k), k)
+    k = min(int(max_k), int(n_genes - 1), k)
+    return int(k)
+
+
+def sparsify_positive_edges_knn(
+    positive_edges: pd.DataFrame,
+    *,
+    n_genes: int,
+    k_gene: Optional[int] = None,
+    min_k: int = 10,
+    max_k: int = 200,
+    weight_col: str = "rho_mean",
+) -> pd.DataFrame:
+    """Degree-control the positive graph via per-gene top-k neighbor selection.
+
+    - Does NOT require mutual-kNN (keeps union of directed selections).
+    - Operates on positive edges only; expects columns i, j, and `weight_col`.
+    - Returns an undirected edge list with i<j and weight column preserved.
+    """
+    if positive_edges.empty:
+        return positive_edges.copy()
+    if k_gene is None:
+        k_gene = _default_k_gene(int(n_genes), min_k=int(min_k), max_k=int(max_k))
+    k_gene = int(k_gene)
+    if k_gene <= 0:
+        return positive_edges.iloc[0:0].copy()
+
+    if weight_col not in positive_edges.columns:
+        # Fall back to raw rho if union weights not present.
+        if "rho" in positive_edges.columns:
+            weight_col = "rho"
+        else:
+            raise KeyError(f"positive_edges missing weight column {weight_col!r}")
+
+    # Expand to directed edges so each node can pick its own top-k neighbors.
+    und = positive_edges.copy()
+    und = und[und["sign"] == "pos"].copy() if "sign" in und.columns else und
+    und = und[["i", "j", weight_col]].copy()
+
+    a = und.rename(columns={"i": "src", "j": "dst"})
+    b = und.rename(columns={"j": "src", "i": "dst"})
+    directed = pd.concat([a, b], ignore_index=True)
+
+    # Pick top-k by weight per src.
+    directed = directed.sort_values([ "src", weight_col], ascending=[True, False], kind="mergesort")
+    directed = directed.groupby("src", sort=False, as_index=False).head(k_gene)
+
+    # Convert back to undirected (i<j) and deduplicate.
+    src = directed["src"].to_numpy(dtype=np.int64, copy=False)
+    dst = directed["dst"].to_numpy(dtype=np.int64, copy=False)
+    i = np.minimum(src, dst)
+    j = np.maximum(src, dst)
+    out = pd.DataFrame({"i": i, "j": j, weight_col: directed[weight_col].to_numpy(dtype=np.float32, copy=False)})
+    out = out[out["i"] < out["j"]].copy()
+    out = out.groupby(["i", "j"], as_index=False)[weight_col].max()
+    out["sign"] = "pos"
+    return out
 
 
 def _write_module_stats_json(
@@ -325,6 +394,9 @@ def run_gene_modules_from_scratch_dir(
     split_mode: str = "union",
     chunk_rows: int = 512,
     resolution: float = 1.0,
+    k_gene: Optional[int] = None,
+    min_k_gene: int = 10,
+    max_k_gene: int = 200,
     out_dir: Optional[Union[str, Path]] = None,
 ) -> Dict[str, Path]:
     """Turn-key gene module discovery from a `robust(..., scratch_dir=...)` directory."""
@@ -361,7 +433,16 @@ def run_gene_modules_from_scratch_dir(
     pos, neg = _split_edges_by_sign(edges)
 
     weight_col = "rho_mean" if "rho_mean" in pos.columns else "rho"
-    pos_for_leiden = pos[["i", "j", weight_col]].rename(columns={weight_col: "rho"}).copy()
+    # Degree control on positive graph for module discovery
+    pos_knn = sparsify_positive_edges_knn(
+        pos,
+        n_genes=art_train.n_features,
+        k_gene=k_gene,
+        min_k=min_k_gene,
+        max_k=max_k_gene,
+        weight_col=weight_col,
+    )
+    pos_for_leiden = pos_knn[["i", "j", weight_col]].rename(columns={weight_col: "rho"}).copy()
     pos_for_leiden["sign"] = "pos"
 
     labels = run_leiden_gene_modules(pos_for_leiden, n_genes=art_train.n_features, resolution=resolution)
@@ -405,6 +486,7 @@ def run_gene_modules_from_scratch_dir(
         "edges": edge_meta,
     }
     params = {"split_mode": split_mode, "chunk_rows": int(chunk_rows), "resolution": float(resolution)}
+    params.update({"k_gene": int(k_gene) if k_gene is not None else None, "min_k_gene": int(min_k_gene), "max_k_gene": int(max_k_gene)})
     artifact_paths = {"modules_tsv_gz": str(modules_path), "module_stats_json": str(stats_path)}
 
     _write_module_stats_json(
