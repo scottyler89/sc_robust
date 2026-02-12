@@ -60,3 +60,32 @@ def test_run_leiden_gene_modules_smoke(tmp_path):
     assert labels[0] == labels[1]
     assert labels[2] == labels[3]
 
+
+def test_run_gene_modules_from_scratch_dir_writes_outputs(tmp_path):
+    import pandas as pd
+    import sc_robust.gene_modules as gm
+
+    feature_ids = ["G0", "G1", "G2", "G3"]
+    rho = np.array(
+        [
+            [1.0, 0.7, 0.1, -0.8],
+            [0.7, 1.0, 0.6, -0.2],
+            [0.1, 0.6, 1.0, -0.6],
+            [-0.8, -0.2, -0.6, 1.0],
+        ],
+        dtype=np.float32,
+    )
+
+    scratch = tmp_path / "scratch"
+    (scratch / "train").mkdir(parents=True, exist_ok=True)
+    (scratch / "val").mkdir(parents=True, exist_ok=True)
+    _write_toy_spearman_h5(scratch / "train" / "spearman.hdf5", feature_ids=feature_ids, rho=rho, cpos=0.5, cneg=-0.5)
+    _write_toy_spearman_h5(scratch / "val" / "spearman.hdf5", feature_ids=feature_ids, rho=rho, cpos=0.5, cneg=-0.5)
+
+    out = gm.run_gene_modules_from_scratch_dir(scratch, split_mode="union", resolution=1.0)
+    assert out["modules"].exists()
+    assert out["module_stats"].exists()
+
+    df = pd.read_csv(out["modules"], sep="\t")
+    assert set(df.columns) >= {"gene_id", "module_id", "degree_pos", "strength_pos"}
+    assert df.shape[0] == 4

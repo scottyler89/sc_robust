@@ -244,3 +244,177 @@ def run_leiden_gene_modules(
     _, _, labels = perform_leiden_clustering(graph, resolution_parameter=float(resolution))
     return labels
 
+
+def _split_edges_by_sign(edges: pd.DataFrame) -> Tuple[pd.DataFrame, pd.DataFrame]:
+    if edges.empty:
+        return edges.copy(), edges.copy()
+    pos = edges[edges["sign"] == "pos"].copy()
+    neg = edges[edges["sign"] == "neg"].copy()
+    return pos, neg
+
+
+def _union_split_edges(
+    edges_train: pd.DataFrame,
+    edges_val: pd.DataFrame,
+) -> pd.DataFrame:
+    """Union edge lists, recording split presence and mean rho (missing treated as 0)."""
+    cols = ["i", "j", "sign", "rho"]
+    train = edges_train[cols].rename(columns={"rho": "rho_train"}).copy()
+    val = edges_val[cols].rename(columns={"rho": "rho_val"}).copy()
+
+    merged = train.merge(val, on=["i", "j", "sign"], how="outer")
+    merged["present_train"] = merged["rho_train"].notna()
+    merged["present_val"] = merged["rho_val"].notna()
+    merged["rho_train"] = merged["rho_train"].fillna(0.0)
+    merged["rho_val"] = merged["rho_val"].fillna(0.0)
+    merged["rho_mean"] = (merged["rho_train"] + merged["rho_val"]) / 2.0
+
+    merged["agree_sign"] = True
+    both = merged["present_train"] & merged["present_val"]
+    merged.loc[both, "agree_sign"] = np.sign(merged.loc[both, "rho_train"]) == np.sign(merged.loc[both, "rho_val"])
+    return merged
+
+
+def _write_module_stats_json(
+    out_path: Path,
+    *,
+    artifact_paths: Dict[str, str],
+    artifact_meta: Dict[str, Any],
+    params: Dict[str, Any],
+    labels: np.ndarray,
+    positive_edges: pd.DataFrame,
+    negative_edges: pd.DataFrame,
+) -> None:
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    labels = np.asarray(labels)
+    sizes = pd.Series(labels).value_counts().sort_index()
+
+    if not positive_edges.empty:
+        li = labels[positive_edges["i"].to_numpy(dtype=np.int64, copy=False)]
+        lj = labels[positive_edges["j"].to_numpy(dtype=np.int64, copy=False)]
+        intra = positive_edges[li == lj].copy()
+        intra["module_id"] = li[li == lj]
+        weight_col = "rho_mean" if "rho_mean" in intra.columns else "rho"
+        intra_summary = (
+            intra.groupby("module_id")[weight_col]
+            .agg(["count", "mean", "median"])
+            .reset_index()
+            .to_dict(orient="records")
+        )
+    else:
+        intra_summary = []
+
+    payload = {
+        "artifacts": artifact_paths,
+        "source": artifact_meta,
+        "params": params,
+        "modules": {
+            "n_modules": int(sizes.shape[0]),
+            "sizes": sizes.to_dict(),
+            "intra_positive_edge_summary": intra_summary,
+            "n_positive_edges": int(len(positive_edges)),
+            "n_negative_edges": int(len(negative_edges)),
+        },
+    }
+    out_path.write_text(json.dumps(payload, indent=2, sort_keys=True, default=str), encoding="utf-8")
+
+
+def run_gene_modules_from_scratch_dir(
+    scratch_dir: Union[str, Path],
+    *,
+    split_mode: str = "union",
+    chunk_rows: int = 512,
+    resolution: float = 1.0,
+    out_dir: Optional[Union[str, Path]] = None,
+) -> Dict[str, Path]:
+    """Turn-key gene module discovery from a `robust(..., scratch_dir=...)` directory."""
+    scratch_dir = Path(scratch_dir)
+    train_h5 = scratch_dir / "train" / "spearman.hdf5"
+    val_h5 = scratch_dir / "val" / "spearman.hdf5"
+    if not train_h5.exists() or not val_h5.exists():
+        raise FileNotFoundError(f"Expected train/val spearman.hdf5 under {scratch_dir}")
+
+    out_dir = Path(out_dir) if out_dir is not None else scratch_dir
+    out_dir.mkdir(parents=True, exist_ok=True)
+
+    art_train = read_spearman_h5(train_h5)
+    art_val = read_spearman_h5(val_h5)
+    if art_train.feature_ids_kept != art_val.feature_ids_kept:
+        raise ValueError("train/val feature_ids_kept differ; align feature selection before module discovery.")
+
+    edges_train = extract_thresholded_edges(train_h5, chunk_rows=chunk_rows, upper_triangle_only=True)
+    edges_val = extract_thresholded_edges(val_h5, chunk_rows=chunk_rows, upper_triangle_only=True)
+
+    if split_mode not in {"train", "val", "union"}:
+        raise ValueError("split_mode must be one of: 'train', 'val', 'union'")
+
+    if split_mode == "train":
+        edges = edges_train.copy()
+        edge_meta = {"mode": "train"}
+    elif split_mode == "val":
+        edges = edges_val.copy()
+        edge_meta = {"mode": "val"}
+    else:
+        edges = _union_split_edges(edges_train, edges_val)
+        edge_meta = {"mode": "union"}
+
+    pos, neg = _split_edges_by_sign(edges)
+
+    weight_col = "rho_mean" if "rho_mean" in pos.columns else "rho"
+    pos_for_leiden = pos[["i", "j", weight_col]].rename(columns={weight_col: "rho"}).copy()
+    pos_for_leiden["sign"] = "pos"
+
+    labels = run_leiden_gene_modules(pos_for_leiden, n_genes=art_train.n_features, resolution=resolution)
+
+    pos_adj = edges_to_sparse_adjacency(pos_for_leiden, n_nodes=art_train.n_features, symmetric=True).tocsr()
+    strength = np.asarray(pos_adj.sum(axis=1)).reshape(-1)
+    degree = np.asarray((pos_adj != 0).sum(axis=1)).reshape(-1)
+
+    modules_df = pd.DataFrame(
+        {
+            "gene_id": art_train.feature_ids_kept,
+            "module_id": labels.astype(int),
+            "degree_pos": degree.astype(int),
+            "strength_pos": strength.astype(np.float32),
+        }
+    )
+
+    modules_path = out_dir / "modules.tsv.gz"
+    modules_df.to_csv(modules_path, sep="\t", index=False, compression="gzip")
+
+    stats_path = out_dir / "module_stats.json"
+    source_meta = {
+        "scratch_dir": str(scratch_dir),
+        "feature_ids_kept_sha256": hashlib.sha256(
+            ("\n".join(art_train.feature_ids_kept)).encode("utf-8", errors="ignore")
+        ).hexdigest(),
+        "train": {
+            "path": str(art_train.path),
+            "schema_version": art_train.schema_version,
+            "provenance_sha256": art_train.provenance_sha256,
+            "cpos": art_train.cpos,
+            "cneg": art_train.cneg,
+        },
+        "val": {
+            "path": str(art_val.path),
+            "schema_version": art_val.schema_version,
+            "provenance_sha256": art_val.provenance_sha256,
+            "cpos": art_val.cpos,
+            "cneg": art_val.cneg,
+        },
+        "edges": edge_meta,
+    }
+    params = {"split_mode": split_mode, "chunk_rows": int(chunk_rows), "resolution": float(resolution)}
+    artifact_paths = {"modules_tsv_gz": str(modules_path), "module_stats_json": str(stats_path)}
+
+    _write_module_stats_json(
+        stats_path,
+        artifact_paths=artifact_paths,
+        artifact_meta=source_meta,
+        params=params,
+        labels=labels,
+        positive_edges=pos,
+        negative_edges=neg,
+    )
+
+    return {"modules": modules_path, "module_stats": stats_path}
