@@ -245,3 +245,48 @@ def test_run_replicated_module_antagonism_for_cohort(tmp_path):
     assert int(row["replicated_module_a"]) == 10
     assert int(row["replicated_module_b"]) == 11
     assert int(row["n_samples_support"]) == 2
+
+
+def test_compute_cluster_gene_module_scores_and_meta_profiles_cosine():
+    import numpy as np
+    import pandas as pd
+    from sc_robust.gene_modules import compute_cluster_gene_module_scores, compute_meta_cluster_module_profiles_cosine
+
+    # 4 cells x 5 genes
+    X = np.array(
+        [
+            [10, 10, 0, 0, 0],
+            [9, 11, 0, 0, 0],
+            [0, 0, 10, 10, 0],
+            [0, 0, 9, 11, 0],
+        ],
+        dtype=np.float32,
+    )
+    gene_ids = ["A", "B", "C", "D", "E"]
+    clusters = ["c0", "c0", "c1", "c1"]
+    replicated_modules = pd.DataFrame(
+        {
+            "replicated_module_id": [0, 0, 1, 1],
+            "gene_id": ["A", "B", "C", "D"],
+            "support_n_samples": [2, 2, 1, 1],
+        }
+    )
+
+    scores = compute_cluster_gene_module_scores(
+        X,
+        gene_ids=gene_ids,
+        cluster_labels=clusters,
+        replicated_modules=replicated_modules,
+        min_support_n_samples=1,
+    )
+    # c0 should score higher on module 0; c1 higher on module 1.
+    c0 = scores[scores["cluster"] == "c0"].set_index("replicated_module_id")["score"].to_dict()
+    c1 = scores[scores["cluster"] == "c1"].set_index("replicated_module_id")["score"].to_dict()
+    assert c0[0] > c0[1]
+    assert c1[1] > c1[0]
+
+    cluster_to_meta = {"c0": "m0", "c1": "m1"}
+    prof = compute_meta_cluster_module_profiles_cosine(scores, cluster_to_meta=cluster_to_meta)
+    # Each meta-cluster has 1 contributing cluster.
+    assert set(prof["meta_cluster"].unique().tolist()) == {"m0", "m1"}
+    assert set(prof["n_clusters"].unique().tolist()) == {1}

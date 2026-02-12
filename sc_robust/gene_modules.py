@@ -702,6 +702,146 @@ def run_gene_module_meta_analysis_for_cohort(
     }
 
 
+def _l2_normalize_rows(mat: np.ndarray, *, eps: float = 1e-12) -> np.ndarray:
+    mat = np.asarray(mat, dtype=np.float64)
+    norms = np.linalg.norm(mat, axis=1, keepdims=True)
+    norms = np.maximum(norms, eps)
+    return (mat / norms).astype(np.float32)
+
+
+def compute_cluster_gene_module_scores(
+    exprs_cells_by_genes: Union[np.ndarray, sp.spmatrix],
+    *,
+    gene_ids: Sequence[str],
+    cluster_labels: Sequence[Union[int, str]],
+    replicated_modules: pd.DataFrame,
+    min_support_n_samples: int = 1,
+    score: str = "mean",
+) -> pd.DataFrame:
+    """Compute per-cluster module scores from a gene-module membership table.
+
+    This is intentionally *not* Scanpy-dependent and expects the caller to pass the
+    intended expression space (e.g., pf-log output used elsewhere in sc_robust).
+
+    Parameters
+    - exprs_cells_by_genes: cells×genes expression (dense or CSR/CSC).
+    - gene_ids: length==n_genes, matching exprs column order.
+    - cluster_labels: length==n_cells cluster assignment.
+    - replicated_modules: DataFrame with at least columns:
+        - replicated_module_id (int)
+        - gene_id (str)
+        - support_n_samples (int)
+    - min_support_n_samples: filter genes to those observed in >= this many samples.
+    - score:
+        - "mean": module score = mean expression of member genes.
+
+    Returns
+    - DataFrame with columns: cluster, replicated_module_id, score
+    """
+    if score != "mean":
+        raise ValueError("Only score='mean' is supported currently.")
+    X = exprs_cells_by_genes
+    n_cells, n_genes = X.shape
+    if len(gene_ids) != n_genes:
+        raise ValueError("gene_ids must match exprs_cells_by_genes.shape[1].")
+    if len(cluster_labels) != n_cells:
+        raise ValueError("cluster_labels must match exprs_cells_by_genes.shape[0].")
+
+    mods = replicated_modules.copy()
+    required = {"replicated_module_id", "gene_id", "support_n_samples"}
+    missing = required - set(mods.columns)
+    if missing:
+        raise ValueError(f"replicated_modules missing columns: {sorted(missing)}")
+    mods = mods[mods["support_n_samples"].astype(int) >= int(min_support_n_samples)].copy()
+    if mods.empty:
+        return pd.DataFrame(columns=["cluster", "replicated_module_id", "score"])
+    mods["replicated_module_id"] = mods["replicated_module_id"].astype(int)
+    mods["gene_id"] = mods["gene_id"].astype(str)
+
+    gene_to_idx = {str(g): int(i) for i, g in enumerate(gene_ids)}
+    mods["gene_idx"] = mods["gene_id"].map(gene_to_idx)
+    mods = mods.dropna(subset=["gene_idx"]).copy()
+    if mods.empty:
+        return pd.DataFrame(columns=["cluster", "replicated_module_id", "score"])
+    mods["gene_idx"] = mods["gene_idx"].astype(int)
+
+    module_ids = sorted(mods["replicated_module_id"].unique().tolist())
+    module_to_col = {int(m): int(i) for i, m in enumerate(module_ids)}
+    mods["module_col"] = mods["replicated_module_id"].map(module_to_col).astype(int)
+
+    # Build genes×modules membership; use 1/|module| weights so (X @ M) yields per-cell mean.
+    sizes = mods.groupby("module_col", as_index=True)["gene_idx"].nunique().to_dict()
+    w = mods["module_col"].map(lambda c: 1.0 / float(sizes[int(c)])).to_numpy(dtype=np.float32, copy=False)
+    gi = mods["gene_idx"].to_numpy(dtype=np.int64, copy=False)
+    mj = mods["module_col"].to_numpy(dtype=np.int64, copy=False)
+    membership = sp.coo_matrix((w, (gi, mj)), shape=(n_genes, len(module_ids)), dtype=np.float32).tocsr()
+
+    if sp.issparse(X):
+        cell_mod = (X @ membership).astype(np.float32)
+        cell_mod = cell_mod.toarray()
+    else:
+        cell_mod = (np.asarray(X, dtype=np.float32) @ membership.toarray()).astype(np.float32)
+
+    labels = np.asarray(cluster_labels)
+    clusters = pd.Series(labels).astype(str).to_numpy()
+    df = pd.DataFrame(cell_mod, columns=[str(m) for m in module_ids])
+    df.insert(0, "cluster", clusters)
+    cluster_means = df.groupby("cluster", as_index=False).mean(numeric_only=True)
+
+    long = cluster_means.melt(id_vars=["cluster"], var_name="replicated_module_id", value_name="score")
+    long["replicated_module_id"] = long["replicated_module_id"].astype(int)
+    long["score"] = long["score"].astype(np.float32)
+    return long
+
+
+def compute_meta_cluster_module_profiles_cosine(
+    cluster_module_scores: pd.DataFrame,
+    *,
+    cluster_to_meta: Dict[str, str],
+) -> pd.DataFrame:
+    """Compute cosine-style meta-cluster module profiles from per-cluster module scores.
+
+    The intent is to compare geometry (direction) rather than magnitude:
+    - Per cluster: build a module-score vector and L2 normalize it.
+    - Per meta-cluster: average the normalized vectors and renormalize.
+    """
+    required = {"cluster", "replicated_module_id", "score"}
+    missing = required - set(cluster_module_scores.columns)
+    if missing:
+        raise ValueError(f"cluster_module_scores missing columns: {sorted(missing)}")
+
+    df = cluster_module_scores.copy()
+    df["cluster"] = df["cluster"].astype(str)
+    df["replicated_module_id"] = df["replicated_module_id"].astype(int)
+    df["score"] = df["score"].astype(np.float32)
+    df["meta_cluster"] = df["cluster"].map(lambda c: cluster_to_meta.get(str(c)))
+    df = df.dropna(subset=["meta_cluster"]).copy()
+    if df.empty:
+        return pd.DataFrame(columns=["meta_cluster", "replicated_module_id", "profile_weight", "n_clusters"])
+    df["meta_cluster"] = df["meta_cluster"].astype(str)
+
+    wide = df.pivot_table(
+        index="cluster", columns="replicated_module_id", values="score", aggfunc="mean", fill_value=0.0
+    ).astype(np.float32)
+    wide_norm = _l2_normalize_rows(wide.to_numpy())
+    norm_df = pd.DataFrame(wide_norm, index=wide.index, columns=wide.columns)
+    norm_df["meta_cluster"] = norm_df.index.to_series().map(lambda c: cluster_to_meta.get(str(c))).astype(str)
+
+    # Average direction per meta-cluster, then renormalize.
+    meta_means = norm_df.groupby("meta_cluster", as_index=True).mean(numeric_only=True)
+    meta_norm = _l2_normalize_rows(meta_means.to_numpy())
+    meta_norm_df = pd.DataFrame(meta_norm, index=meta_means.index, columns=meta_means.columns)
+    meta_norm_df["n_clusters"] = norm_df.groupby("meta_cluster").size().astype(int)
+
+    out = meta_norm_df.reset_index().melt(
+        id_vars=["meta_cluster", "n_clusters"], var_name="replicated_module_id", value_name="profile_weight"
+    )
+    out["replicated_module_id"] = out["replicated_module_id"].astype(int)
+    out["profile_weight"] = out["profile_weight"].astype(np.float32)
+    out["n_clusters"] = out["n_clusters"].astype(int)
+    return out
+
+
 def _iter_thresholded_edges_from_dense_block(
     block: np.ndarray,
     *,
