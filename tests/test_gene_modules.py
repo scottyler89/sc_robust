@@ -147,3 +147,53 @@ def test_run_gene_modules_for_cohort_writes_manifest(tmp_path):
     assert set(manifest["sample"].tolist()) == {"S1", "S2"}
     assert (out_dir / "gene_modules_manifest.tsv.gz").exists()
     assert (out_dir / "gene_modules_manifest.schema.json").exists()
+
+
+def test_run_replicated_gene_modules_for_cohort_support_annotation(tmp_path):
+    from sc_robust.gene_modules import run_replicated_gene_modules_for_cohort
+    import pandas as pd
+
+    out_dir = tmp_path / "out"
+    out_dir.mkdir()
+
+    # Minimal cohort manifest + per-sample gene_modules outputs.
+    manifest = pd.DataFrame(
+        [
+            {"sample": "S1", "scratch_dir": "NA", "status": "ok"},
+            {"sample": "S2", "scratch_dir": "NA", "status": "ok"},
+        ]
+    )
+    manifest.to_csv(out_dir / "gene_modules_manifest.tsv.gz", sep="\t", index=False, compression="gzip")
+
+    s1 = out_dir / "S1"
+    s2 = out_dir / "S2"
+    s1.mkdir()
+    s2.mkdir()
+
+    pd.DataFrame(
+        {
+            "gene_id": ["A", "B", "C", "D", "E"],
+            "module_id": [0, 0, 0, 1, 1],
+            "degree_pos": [0, 0, 0, 0, 0],
+            "strength_pos": [0.0, 0.0, 0.0, 0.0, 0.0],
+        }
+    ).to_csv(s1 / "gene_modules.tsv.gz", sep="\t", index=False, compression="gzip")
+
+    pd.DataFrame(
+        {
+            "gene_id": ["A", "B", "F", "D", "E", "G"],
+            "module_id": [0, 0, 0, 2, 2, 2],
+            "degree_pos": [0, 0, 0, 0, 0, 0],
+            "strength_pos": [0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
+        }
+    ).to_csv(s2 / "gene_modules.tsv.gz", sep="\t", index=False, compression="gzip")
+
+    paths = run_replicated_gene_modules_for_cohort(out_dir, jaccard_min=0.2, resolution=1.0)
+    rep = pd.read_csv(paths["replicated_modules"], sep="\t")
+
+    # Genes A/B appear in both samples in the same overlapped module cluster -> support==2.
+    ab = rep.set_index("gene_id").loc[["A", "B"], "support_n_samples"].tolist()
+    assert ab == [2, 2]
+    # Sample-unique genes are still present, annotated with support==1.
+    assert int(rep.set_index("gene_id").loc["C", "support_n_samples"]) == 1
+    assert int(rep.set_index("gene_id").loc["F", "support_n_samples"]) == 1

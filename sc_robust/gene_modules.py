@@ -351,6 +351,186 @@ def run_gene_modules_for_cohort(
     return manifest
 
 
+def _load_sample_gene_modules(sample_out_dir: Path) -> pd.DataFrame:
+    path = sample_out_dir / "gene_modules.tsv.gz"
+    if not path.exists():
+        raise FileNotFoundError(f"Missing {path}")
+    df = pd.read_csv(path, sep="\t")
+    required = {"gene_id", "module_id"}
+    missing = required - set(df.columns)
+    if missing:
+        raise ValueError(f"{path} missing columns: {sorted(missing)}")
+    df = df[["gene_id", "module_id"]].copy()
+    df["module_id"] = df["module_id"].astype(int)
+    return df
+
+
+def _build_module_nodes_from_cohort_outputs(
+    out_dir: Union[str, Path],
+    *,
+    manifest: Optional[pd.DataFrame] = None,
+) -> pd.DataFrame:
+    out_dir = Path(out_dir)
+    if manifest is None:
+        manifest_path = out_dir / "gene_modules_manifest.tsv.gz"
+        if not manifest_path.exists():
+            raise FileNotFoundError(f"Expected {manifest_path}")
+        manifest = pd.read_csv(manifest_path, sep="\t")
+
+    ok = manifest[manifest["status"] == "ok"].copy()
+    if ok.empty:
+        return pd.DataFrame(columns=["node_id", "sample", "module_id", "n_genes"])
+
+    rows: List[Dict[str, Any]] = []
+    for sample in ok["sample"].astype(str).tolist():
+        sample_out = out_dir / sample
+        mods = _load_sample_gene_modules(sample_out)
+        sizes = mods.groupby("module_id", as_index=True)["gene_id"].nunique().to_dict()
+        for module_id, n_genes in sizes.items():
+            rows.append({"sample": sample, "module_id": int(module_id), "n_genes": int(n_genes)})
+    nodes = pd.DataFrame(rows)
+    if nodes.empty:
+        return pd.DataFrame(columns=["node_id", "sample", "module_id", "n_genes"])
+    nodes = nodes.sort_values(["sample", "module_id"]).reset_index(drop=True)
+    nodes.insert(0, "node_id", np.arange(nodes.shape[0], dtype=int))
+    return nodes
+
+
+def _compute_module_overlap_edges(
+    out_dir: Union[str, Path],
+    nodes: pd.DataFrame,
+    *,
+    jaccard_min: float = 0.3,
+    require_different_samples: bool = True,
+) -> pd.DataFrame:
+    """Compute a weighted module-overlap graph using Jaccard between (sample,module_id) nodes."""
+    out_dir = Path(out_dir)
+    if nodes.empty:
+        return pd.DataFrame(columns=["i", "j", "jaccard", "n_intersection"])
+
+    # Build a map: (sample,module_id) -> node_id
+    key_to_node: Dict[Tuple[str, int], int] = {
+        (r["sample"], int(r["module_id"])): int(r["node_id"]) for r in nodes.to_dict(orient="records")
+    }
+    node_sizes = nodes.set_index("node_id")["n_genes"].to_dict()
+    node_to_sample = nodes.set_index("node_id")["sample"].to_dict()
+
+    # Inverted index: gene -> list of node_ids where present (typically one per sample)
+    gene_to_nodes: Dict[str, List[int]] = {}
+    for sample in nodes["sample"].astype(str).unique().tolist():
+        mods = _load_sample_gene_modules(out_dir / sample)
+        for gene_id, module_id in mods[["gene_id", "module_id"]].itertuples(index=False, name=None):
+            node_id = key_to_node.get((sample, int(module_id)))
+            if node_id is None:
+                continue
+            gene_to_nodes.setdefault(str(gene_id), []).append(int(node_id))
+
+    # Count intersections for candidate pairs via shared genes.
+    inter_counts: Dict[Tuple[int, int], int] = {}
+    for node_list in gene_to_nodes.values():
+        if len(node_list) <= 1:
+            continue
+        uniq = sorted(set(node_list))
+        for a_idx, a in enumerate(uniq):
+            for b in uniq[a_idx + 1 :]:
+                if require_different_samples and node_to_sample.get(a) == node_to_sample.get(b):
+                    continue
+                key = (a, b) if a < b else (b, a)
+                inter_counts[key] = inter_counts.get(key, 0) + 1
+
+    if not inter_counts:
+        return pd.DataFrame(columns=["i", "j", "jaccard", "n_intersection"])
+
+    rows = []
+    for (a, b), inter in inter_counts.items():
+        size_a = int(node_sizes.get(a, 0))
+        size_b = int(node_sizes.get(b, 0))
+        union = size_a + size_b - int(inter)
+        if union <= 0:
+            continue
+        jac = float(inter) / float(union)
+        if jac >= float(jaccard_min):
+            rows.append({"i": int(a), "j": int(b), "jaccard": float(jac), "n_intersection": int(inter)})
+    return pd.DataFrame(rows)
+
+
+def run_replicated_gene_modules_for_cohort(
+    out_dir: Union[str, Path],
+    *,
+    jaccard_min: float = 0.3,
+    resolution: float = 1.0,
+) -> Dict[str, Path]:
+    """Cluster per-sample positive modules into cohort-level replicated modules.
+
+    Output is *annotated* with `support_n_samples` so sample-unique structure is preserved
+    without splitting into separate reporting formats.
+    """
+    from .utils import perform_leiden_clustering
+
+    out_dir = Path(out_dir)
+    out_dir.mkdir(parents=True, exist_ok=True)
+    manifest_path = out_dir / "gene_modules_manifest.tsv.gz"
+    if not manifest_path.exists():
+        raise FileNotFoundError(f"Expected {manifest_path}")
+    manifest = pd.read_csv(manifest_path, sep="\t")
+
+    nodes = _build_module_nodes_from_cohort_outputs(out_dir, manifest=manifest)
+    edges = _compute_module_overlap_edges(out_dir, nodes, jaccard_min=jaccard_min, require_different_samples=True)
+
+    if nodes.empty:
+        replicated_modules_path = out_dir / "replicated_modules.tsv.gz"
+        pd.DataFrame(columns=["replicated_module_id", "gene_id", "support_n_samples"]).to_csv(
+            replicated_modules_path, sep="\t", index=False, compression="gzip"
+        )
+        instances_path = out_dir / "replicated_module_instances.tsv.gz"
+        pd.DataFrame(columns=["sample", "module_id", "replicated_module_id", "n_genes"]).to_csv(
+            instances_path, sep="\t", index=False, compression="gzip"
+        )
+        return {"replicated_modules": replicated_modules_path, "replicated_module_instances": instances_path}
+
+    # Build module-overlap adjacency; fall back to all-singletons if no edges.
+    if edges.empty:
+        labels = np.arange(nodes.shape[0], dtype=int)
+    else:
+        graph = edges_to_sparse_adjacency(
+            edges.rename(columns={"jaccard": "rho"}), n_nodes=int(nodes.shape[0]), weight_col="rho"
+        )
+        _, _, labels = perform_leiden_clustering(graph, resolution_parameter=float(resolution))
+        labels = np.asarray(labels, dtype=int)
+
+    nodes = nodes.copy()
+    nodes["replicated_module_id"] = labels.astype(int)
+    instances_path = out_dir / "replicated_module_instances.tsv.gz"
+    nodes[["sample", "module_id", "replicated_module_id", "n_genes"]].to_csv(
+        instances_path, sep="\t", index=False, compression="gzip"
+    )
+
+    # Gene-level support per replicated_module_id.
+    ok_samples = manifest.loc[manifest["status"] == "ok", "sample"].astype(str).tolist()
+    gene_rows: List[Tuple[int, str, str]] = []  # (rep_mod_id, gene_id, sample)
+    for sample in ok_samples:
+        sample_out = out_dir / sample
+        mods = _load_sample_gene_modules(sample_out)
+        module_to_rep = nodes[nodes["sample"] == sample].set_index("module_id")["replicated_module_id"].to_dict()
+        for gene_id, module_id in mods[["gene_id", "module_id"]].itertuples(index=False, name=None):
+            rep_id = module_to_rep.get(int(module_id))
+            if rep_id is None:
+                continue
+            gene_rows.append((int(rep_id), str(gene_id), str(sample)))
+
+    gene_df = pd.DataFrame(gene_rows, columns=["replicated_module_id", "gene_id", "sample"])
+    support = (
+        gene_df.drop_duplicates()
+        .groupby(["replicated_module_id", "gene_id"], as_index=False)["sample"]
+        .nunique()
+        .rename(columns={"sample": "support_n_samples"})
+    )
+    replicated_modules_path = out_dir / "replicated_modules.tsv.gz"
+    support.to_csv(replicated_modules_path, sep="\t", index=False, compression="gzip")
+
+    return {"replicated_modules": replicated_modules_path, "replicated_module_instances": instances_path}
+
+
 def _iter_thresholded_edges_from_dense_block(
     block: np.ndarray,
     *,
