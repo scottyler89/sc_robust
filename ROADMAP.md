@@ -298,9 +298,15 @@ Phase 2 — Per-Sample Signed Sparse Graphs (Using `Cpos/Cneg`)
   - Negative edges: `rho <= Cneg`
   - Store as COO/CSR (edge list + optional sparse matrix on disk).
 - [ ] Within-sample train/val union:
-  - union edges across splits; store `present_train`, `present_val`, `agree_sign`, and `mean_rho` (with non-sig treated as 0).
+  - Merge policy (inspired by existing train/val cell-graph merge, but sign-safe):
+    - Include an edge if it is over-threshold in train OR val.
+    - If present in both splits, require sign agreement; otherwise drop and record as sign-discordant.
+    - Store `present_train`, `present_val`, `agree_sign`, and `rho_mean` (with non-sig treated as 0 for averaging).
+    - Mark confidence: `both_splits` vs `single_split` to support downstream filtering without losing sample-specific structure.
 - [ ] Optional local graph weighting / degree control (positive edges for modules):
-  - KNN-style degree cap per gene (mutual-KNN optional)
+  - KNN-style degree cap per gene (default ON for module discovery; mutual-KNN default OFF)
+    - Default `k_gene = max(min_k, round(log(n_genes)))`, with `min_k=10` and `k_gene <= 200` and `k_gene <= n_genes-1`.
+    - Apply to the positive-edge graph only (never mix pos/neg); negatives are summarized separately for antagonism.
   - local scaling / percentile weights (“beyond cutoff” normalization)
   - SNN/Jaccard reweighting based on neighbor overlap
   - Always apply after `Cpos/Cneg` gating (preserve empirical calibration).
