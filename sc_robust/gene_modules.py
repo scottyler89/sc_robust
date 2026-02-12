@@ -43,6 +43,32 @@ def _safe_json_loads(value: Optional[str]) -> Optional[Dict[str, Any]]:
         return None
 
 
+def _extract_provenance_fields(prov: Optional[Dict[str, Any]]) -> Dict[str, Any]:
+    """Best-effort extraction of stable provenance fields from anticor_features JSON."""
+    if not isinstance(prov, dict):
+        return {}
+    out: Dict[str, Any] = {}
+    out["schema_version"] = prov.get("schema_version") or prov.get("schema", {}).get("version")
+    # Anticor features teams are iterating; handle a couple likely shapes.
+    pr = prov.get("pathway_removal") or prov.get("pathways") or {}
+    if isinstance(pr, dict):
+        for key in (
+            "pathway_source",
+            "species",
+            "bank_manifest_path",
+            "bank_sha256",
+            "id_bank_dir",
+            "use_live_pathway_lookup",
+            "offline_mode",
+            "requested_pathways",
+            "resolved_pathways",
+            "missing_pathways",
+        ):
+            if key in pr:
+                out[f"pathway_removal.{key}"] = pr.get(key)
+    return {k: v for k, v in out.items() if v is not None}
+
+
 def read_spearman_h5(path: Union[str, Path]) -> SpearmanArtifact:
     """Read metadata required for module discovery from a `spearman.hdf5` file.
 
@@ -454,6 +480,10 @@ def run_gene_modules_from_scratch_dir(
 
     art_train = read_spearman_h5(train_h5)
     art_val = read_spearman_h5(val_h5)
+    prov_train = _safe_json_loads(art_train.provenance_json)
+    prov_val = _safe_json_loads(art_val.provenance_json)
+    prov_fields_train = _extract_provenance_fields(prov_train)
+    prov_fields_val = _extract_provenance_fields(prov_val)
     if art_train.feature_ids_kept != art_val.feature_ids_kept:
         raise ValueError("train/val feature_ids_kept differ; align feature selection before module discovery.")
 
@@ -526,6 +556,7 @@ def run_gene_modules_from_scratch_dir(
             "path": str(art_train.path),
             "schema_version": art_train.schema_version,
             "provenance_sha256": art_train.provenance_sha256,
+            "provenance_fields": prov_fields_train,
             "cpos": art_train.cpos,
             "cneg": art_train.cneg,
         },
@@ -533,6 +564,7 @@ def run_gene_modules_from_scratch_dir(
             "path": str(art_val.path),
             "schema_version": art_val.schema_version,
             "provenance_sha256": art_val.provenance_sha256,
+            "provenance_fields": prov_fields_val,
             "cpos": art_val.cpos,
             "cneg": art_val.cneg,
         },

@@ -99,3 +99,11 @@ def test_run_gene_modules_from_scratch_dir_writes_outputs(tmp_path):
     df = pd.read_csv(out["gene_modules"], sep="\t")
     assert set(df.columns) >= {"gene_id", "module_id", "degree_pos", "strength_pos"}
     assert df.shape[0] == 4
+
+    # Stats JSON should include extracted provenance fields.
+    import json
+
+    payload = json.loads(out["module_stats"].read_text(encoding="utf-8"))
+    assert "source" in payload
+    assert "train" in payload["source"]
+    assert "provenance_fields" in payload["source"]["train"]
