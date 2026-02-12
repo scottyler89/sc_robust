@@ -163,6 +163,7 @@ def run_gene_modules_for_cohort(
     min_k_gene: int = 10,
     max_k_gene: int = 200,
     persist_edges: bool = True,
+    reuse_existing_edges: bool = True,
 ) -> pd.DataFrame:
     """Batch runner: process many scratch dirs and write per-sample gene artifacts.
 
@@ -177,22 +178,96 @@ def run_gene_modules_for_cohort(
         sample = scratch.name
         sample_out = out_dir / sample
         try:
-            paths = run_gene_modules_from_scratch_dir(
-                scratch,
-                split_mode=split_mode,
-                chunk_rows=chunk_rows,
-                resolution=resolution,
-                k_gene=k_gene,
-                min_k_gene=min_k_gene,
-                max_k_gene=max_k_gene,
-                persist_edges=persist_edges,
-                out_dir=sample_out,
-            )
+            # Fast-path: if gene edges already exist and reuse is enabled, avoid re-reading dense HDF5.
+            edge_pos_path = sample_out / "gene_edges_pos.tsv.gz"
+            edge_neg_path = sample_out / "gene_edges_neg.tsv.gz"
+            if reuse_existing_edges and edge_pos_path.exists() and edge_neg_path.exists():
+                art_train = read_spearman_h5(scratch / "train" / "spearman.hdf5")
+                pos = pd.read_csv(edge_pos_path, sep="\t")
+                neg = pd.read_csv(edge_neg_path, sep="\t")
+                # Build modules from existing positive edges (respect current k_gene defaults).
+                weight_col = "rho_mean" if "rho_mean" in pos.columns else "rho"
+                pos_knn = sparsify_positive_edges_knn(
+                    pos,
+                    n_genes=art_train.n_features,
+                    k_gene=k_gene,
+                    min_k=min_k_gene,
+                    max_k=max_k_gene,
+                    weight_col=weight_col,
+                )
+                pos_for_leiden = pos_knn[["i", "j", weight_col]].rename(columns={weight_col: "rho"}).copy()
+                pos_for_leiden["sign"] = "pos"
+                labels = run_leiden_gene_modules(pos_for_leiden, n_genes=art_train.n_features, resolution=resolution)
+                pos_adj = edges_to_sparse_adjacency(pos_for_leiden, n_nodes=art_train.n_features, symmetric=True).tocsr()
+                strength = np.asarray(pos_adj.sum(axis=1)).reshape(-1)
+                degree = np.asarray((pos_adj != 0).sum(axis=1)).reshape(-1)
+                modules_df = pd.DataFrame(
+                    {
+                        "gene_id": art_train.feature_ids_kept,
+                        "module_id": labels.astype(int),
+                        "degree_pos": degree.astype(int),
+                        "strength_pos": strength.astype(np.float32),
+                    }
+                )
+                sample_out.mkdir(parents=True, exist_ok=True)
+                modules_path = sample_out / "gene_modules.tsv.gz"
+                modules_df.to_csv(modules_path, sep="\t", index=False, compression="gzip")
+                antagonism_path = sample_out / "gene_module_antagonism.tsv.gz"
+                antagonism_df = summarize_gene_module_antagonism(neg, labels=labels)
+                antagonism_df.to_csv(antagonism_path, sep="\t", index=False, compression="gzip")
+                stats_path = sample_out / "module_stats.json"
+                artifact_paths = {
+                    "gene_modules_tsv_gz": str(modules_path),
+                    "gene_edges_pos_tsv_gz": str(edge_pos_path),
+                    "gene_edges_neg_tsv_gz": str(edge_neg_path),
+                    "gene_module_antagonism_tsv_gz": str(antagonism_path),
+                    "module_stats_json": str(stats_path),
+                }
+                params = {
+                    "split_mode": split_mode,
+                    "chunk_rows": int(chunk_rows),
+                    "resolution": float(resolution),
+                    "persist_edges": True,
+                    "reuse_existing_edges": True,
+                    "k_gene": int(k_gene) if k_gene is not None else None,
+                    "min_k_gene": int(min_k_gene),
+                    "max_k_gene": int(max_k_gene),
+                }
+                source_meta = {"scratch_dir": str(scratch), "edges": {"mode": "reused"}}
+                _write_module_stats_json(
+                    stats_path,
+                    artifact_paths=artifact_paths,
+                    artifact_meta=source_meta,
+                    params=params,
+                    labels=labels,
+                    positive_edges=pos,
+                    negative_edges=neg,
+                )
+                paths = {"gene_modules": modules_path, "module_stats": stats_path, "gene_edges_pos": edge_pos_path, "gene_edges_neg": edge_neg_path, "gene_module_antagonism": antagonism_path}
+            else:
+                paths = run_gene_modules_from_scratch_dir(
+                    scratch,
+                    split_mode=split_mode,
+                    chunk_rows=chunk_rows,
+                    resolution=resolution,
+                    k_gene=k_gene,
+                    min_k_gene=min_k_gene,
+                    max_k_gene=max_k_gene,
+                    persist_edges=persist_edges,
+                    out_dir=sample_out,
+                )
+            # Summaries for the cohort manifest.
+            edge_pos = paths.get("gene_edges_pos")
+            edge_neg = paths.get("gene_edges_neg")
+            n_pos = int(pd.read_csv(edge_pos, sep="\t").shape[0]) if edge_pos and Path(edge_pos).exists() else None
+            n_neg = int(pd.read_csv(edge_neg, sep="\t").shape[0]) if edge_neg and Path(edge_neg).exists() else None
             manifest_rows.append(
                 {
                     "sample": sample,
                     "scratch_dir": str(scratch),
                     "status": "ok",
+                    "n_gene_edges_pos": n_pos,
+                    "n_gene_edges_neg": n_neg,
                     **{k: str(v) for k, v in paths.items()},
                 }
             )
@@ -210,6 +285,24 @@ def run_gene_modules_for_cohort(
     manifest = pd.DataFrame(manifest_rows)
     manifest_path = out_dir / "gene_modules_manifest.tsv.gz"
     manifest.to_csv(manifest_path, sep="\t", index=False, compression="gzip")
+    schema_path = out_dir / "gene_modules_manifest.schema.json"
+    schema = {
+        "description": "Row-wise manifest for gene module discovery outputs per sample.",
+        "columns": {
+            "sample": "Sample identifier (derived from scratch dir name).",
+            "scratch_dir": "Input scratch directory containing train/val spearman.hdf5.",
+            "status": "ok|failed.",
+            "n_gene_edges_pos": "Number of persisted positive gene-gene edges (if available).",
+            "n_gene_edges_neg": "Number of persisted negative gene-gene edges (if available).",
+            "gene_modules": "Path to gene_modules.tsv.gz",
+            "gene_edges_pos": "Path to gene_edges_pos.tsv.gz (optional)",
+            "gene_edges_neg": "Path to gene_edges_neg.tsv.gz (optional)",
+            "gene_module_antagonism": "Path to gene_module_antagonism.tsv.gz",
+            "module_stats": "Path to module_stats.json",
+            "error": "Failure text when status=failed.",
+        },
+    }
+    schema_path.write_text(json.dumps(schema, indent=2, sort_keys=True), encoding="utf-8")
     return manifest
 
 
@@ -345,7 +438,7 @@ def _split_edges_by_sign(edges: pd.DataFrame) -> Tuple[pd.DataFrame, pd.DataFram
 def _union_split_edges(
     edges_train: pd.DataFrame,
     edges_val: pd.DataFrame,
-) -> pd.DataFrame:
+) -> Tuple[pd.DataFrame, Dict[str, Any]]:
     """Union edge lists, recording split presence and mean rho (missing treated as 0)."""
     cols = ["i", "j", "sign", "rho"]
     train = edges_train[cols].rename(columns={"rho": "rho_train"}).copy()
@@ -363,10 +456,13 @@ def _union_split_edges(
     merged.loc[both, "agree_sign"] = np.sign(merged.loc[both, "rho_train"]) == np.sign(merged.loc[both, "rho_val"])
 
     # Sign-safe merge policy: if an edge appears in both but disagrees in sign, drop it.
-    merged = merged[~(both & (~merged["agree_sign"]))].copy()
+    sign_discordant_mask = both & (~merged["agree_sign"])
+    n_sign_discordant = int(sign_discordant_mask.sum())
+    merged = merged[~sign_discordant_mask].copy()
 
     merged["confidence"] = np.where(both, "both_splits", "single_split")
-    return merged
+    stats = {"n_sign_discordant_dropped": n_sign_discordant}
+    return merged, stats
 
 
 def _default_k_gene(n_genes: int, *, min_k: int = 10, max_k: int = 200) -> int:
@@ -554,6 +650,7 @@ def run_gene_modules_from_scratch_dir(
     if split_mode not in {"train", "val", "union"}:
         raise ValueError("split_mode must be one of: 'train', 'val', 'union'")
 
+    merge_stats: Dict[str, Any] = {}
     if split_mode == "train":
         edges = edges_train.copy()
         edge_meta = {"mode": "train"}
@@ -561,7 +658,7 @@ def run_gene_modules_from_scratch_dir(
         edges = edges_val.copy()
         edge_meta = {"mode": "val"}
     else:
-        edges = _union_split_edges(edges_train, edges_val)
+        edges, merge_stats = _union_split_edges(edges_train, edges_val)
         edge_meta = {"mode": "union"}
 
     pos, neg = _split_edges_by_sign(edges)
@@ -630,6 +727,7 @@ def run_gene_modules_from_scratch_dir(
             "cneg": art_val.cneg,
         },
         "edges": edge_meta,
+        "merge_stats": merge_stats,
     }
     params = {
         "split_mode": split_mode,

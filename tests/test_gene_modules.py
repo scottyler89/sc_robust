@@ -146,3 +146,4 @@ def test_run_gene_modules_for_cohort_writes_manifest(tmp_path):
     )
     assert set(manifest["sample"].tolist()) == {"S1", "S2"}
     assert (out_dir / "gene_modules_manifest.tsv.gz").exists()
+    assert (out_dir / "gene_modules_manifest.schema.json").exists()
