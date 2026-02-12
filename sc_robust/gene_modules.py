@@ -13,6 +13,51 @@ import scipy.sparse as sp
 
 logger = logging.getLogger(__name__)
 
+_DEFAULT_EDGE_WEIGHT_EPS = 1e-6
+_DEFAULT_EDGE_WEIGHT_MIN = 1e-3
+
+
+def _edge_weight_from_excess(
+    *,
+    rho: np.ndarray,
+    sign: np.ndarray,
+    cpos: float,
+    cneg: float,
+    eps: float = _DEFAULT_EDGE_WEIGHT_EPS,
+    min_weight: float = _DEFAULT_EDGE_WEIGHT_MIN,
+) -> np.ndarray:
+    """Compute edge weights as a (rounded) log1p of how far beyond the cutoff we are.
+
+    This is meant to be analogous to the cell-cell KNN graph weighting: we preserve the
+    cutoff semantics (include/exclude edges based on Cpos/Cneg) and then map the
+    "excess over cutoff" to a smooth, positive scale for kNN degree control and Leiden.
+
+    Notes:
+    - Positive edges (sign == 'pos'): excess = max(rho - Cpos, 0), normalized by (1 - Cpos).
+    - Negative edges (sign == 'neg'): excess = max(Cneg - rho, 0), normalized by (1 + Cneg).
+    - When Cpos==1 or Cneg==-1, the denominator is ~0; we fall back to eps to avoid divide-by-zero.
+    """
+    rho = np.asarray(rho, dtype=np.float64)
+    sign = np.asarray(sign)
+    w = np.zeros_like(rho, dtype=np.float64)
+
+    pos_mask = sign == "pos"
+    if np.any(pos_mask):
+        denom = max(eps, 1.0 - float(cpos))
+        excess = rho[pos_mask] - float(cpos)
+        excess = np.maximum(excess, 0.0) / denom
+        w[pos_mask] = np.log1p(excess + eps)
+
+    neg_mask = sign == "neg"
+    if np.any(neg_mask):
+        denom = max(eps, 1.0 + float(cneg))  # cneg is negative; (1 + cneg) in (0,1]
+        excess = float(cneg) - rho[neg_mask]
+        excess = np.maximum(excess, 0.0) / denom
+        w[neg_mask] = np.log1p(excess + eps)
+
+    w = np.maximum(w, float(min_weight))
+    return np.round(w, 6).astype(np.float32)
+
 
 @dataclass(frozen=True)
 class SpearmanArtifact:
@@ -186,7 +231,7 @@ def run_gene_modules_for_cohort(
                 pos = pd.read_csv(edge_pos_path, sep="\t")
                 neg = pd.read_csv(edge_neg_path, sep="\t")
                 # Build modules from existing positive edges (respect current k_gene defaults).
-                weight_col = "rho_mean" if "rho_mean" in pos.columns else "rho"
+                weight_col = "w_mean" if "w_mean" in pos.columns else ("rho_mean" if "rho_mean" in pos.columns else "rho")
                 pos_knn = sparsify_positive_edges_knn(
                     pos,
                     n_genes=art_train.n_features,
@@ -661,9 +706,32 @@ def run_gene_modules_from_scratch_dir(
         edges, merge_stats = _union_split_edges(edges_train, edges_val)
         edge_meta = {"mode": "union"}
 
+    # Weight edges by "excess beyond cutoff" (log1p), per-split, then average across splits
+    # (missing treated as 0) to match our union merge semantics.
+    if "rho_train" in edges.columns:
+        edges["w_train"] = _edge_weight_from_excess(
+            rho=edges["rho_train"].fillna(0.0).to_numpy(),
+            sign=edges["sign"].to_numpy(),
+            cpos=art_train.cpos,
+            cneg=art_train.cneg,
+        )
+    if "rho_val" in edges.columns:
+        edges["w_val"] = _edge_weight_from_excess(
+            rho=edges["rho_val"].fillna(0.0).to_numpy(),
+            sign=edges["sign"].to_numpy(),
+            cpos=art_val.cpos,
+            cneg=art_val.cneg,
+        )
+    if "w_train" in edges.columns or "w_val" in edges.columns:
+        edges["w_train"] = edges.get("w_train", 0.0)
+        edges["w_val"] = edges.get("w_val", 0.0)
+        edges["w_mean"] = ((edges["w_train"].astype(np.float32) + edges["w_val"].astype(np.float32)) / 2.0).astype(
+            np.float32
+        )
+
     pos, neg = _split_edges_by_sign(edges)
 
-    weight_col = "rho_mean" if "rho_mean" in pos.columns else "rho"
+    weight_col = "w_mean" if "w_mean" in pos.columns else ("rho_mean" if "rho_mean" in pos.columns else "rho")
     # Degree control on positive graph for module discovery
     pos_knn = sparsify_positive_edges_knn(
         pos,
