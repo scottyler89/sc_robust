@@ -191,6 +191,9 @@ class robust(object):
       do_plot: If True, enables diagnostic plots during PC validation.
       seed: Random seed used for deterministic count-splitting.
       scratch_dir: Optional directory for anticor_features to persist artifacts.
+      stop_after_feature_selection: If True, stop after feature selection
+        (useful for regenerating scratch artifacts like `spearman.hdf5` without
+        running PC validation/graph construction).
       anticor_kwargs: Optional extra kwargs forwarded to anticor_features.
     """
     def __init__(self, 
@@ -211,10 +214,12 @@ class robust(object):
                  do_plot: Optional[bool] = False,
                  seed = 123456,
                  count_split_bin_size: int = 1000,
-                 count_split_quiet: bool = True) -> None:
+                 count_split_quiet: bool = True,
+                 stop_after_feature_selection: bool = False) -> None:
         self.seed = int(seed)
         self.count_split_bin_size = int(count_split_bin_size)
         self.count_split_quiet = bool(count_split_quiet)
+        self.stop_after_feature_selection = bool(stop_after_feature_selection)
         self.gene_ids = gene_ids
         self.initial_k = initial_k
         self.original_ad = in_ad
@@ -272,6 +277,19 @@ class robust(object):
             self.provenance["feature_selection"].get("train_selected_n"),
             self.provenance["feature_selection"].get("val_selected_n"),
         )
+        if self.stop_after_feature_selection:
+            # Explicit early-stop mode to allow regenerating/validating scratch artifacts
+            # (exprs.hdf5/spearman.hdf5 + kept-features manifests) without running downstream
+            # graph construction. This is orchestration-only; it does not change the
+            # scientific algorithm of the full robust pipeline when disabled.
+            self.no_reproducible_pcs = False
+            self.indices = None
+            self.distances = None
+            self.weights = None
+            self.graph = None
+            self.provenance["status"] = "stopped_after_feature_selection"
+            logger.info("stop_after_feature_selection=True; skipping PC validation and graph construction.")
+            return
         if (
             self.provenance["feature_selection"].get("train_selected_n", 0) == 0
             or self.provenance["feature_selection"].get("val_selected_n", 0) == 0
