@@ -9,7 +9,7 @@ statsmodels
 networkx
 torch
 faiss-cpu
-anticor_features
+anticor_features>=0.2.7
 igraph
 leidenalg
 pymetis
