@@ -1097,6 +1097,103 @@ def build_publication_gene_sets(
     return out
 
 
+def build_publication_gene_sets_from_de_result(
+    *,
+    de_result: Any,
+    cluster_to_meta: Dict[str, str],
+    replicated_modules: pd.DataFrame,
+    meta_cluster_module_profiles: pd.DataFrame,
+    p_col: Optional[str] = None,
+    effect_col: Optional[str] = None,
+    de_alpha: float = 0.05,
+    support_min: int = 1,
+    top_modules_per_meta_cluster: int = 5,
+    core_max_genes: int = 50,
+    extended_max_genes: int = 200,
+) -> pd.DataFrame:
+    """Adapter: build publication gene sets from a `sc_robust.de.base.DEAnalysisResult`.
+
+    `run_cluster_vs_all(...)` produces a `DEAnalysisResult` whose `contrast_results` keys
+    correspond to per-cluster design columns. This helper maps those cluster keys to
+    `meta_cluster` using `cluster_to_meta` and then calls `build_publication_gene_sets(...)`.
+    """
+    if not hasattr(de_result, "contrast_results"):
+        raise TypeError("de_result must have a `contrast_results` mapping (e.g., sc_robust.de.base.DEAnalysisResult).")
+    contrast_results = getattr(de_result, "contrast_results")
+    if not isinstance(contrast_results, dict):
+        contrast_results = dict(contrast_results)
+
+    # Infer columns if not explicitly provided (keep consistent with our DE helpers).
+    example_df = next(iter(contrast_results.values()), None)
+    if example_df is None:
+        return pd.DataFrame(
+            columns=[
+                "meta_cluster",
+                "tier",
+                "gene_id",
+                "support_n_samples",
+                "de_pvalue",
+                "de_effect",
+                "replicated_module_id",
+                "module_profile_weight",
+            ]
+        )
+    if p_col is None:
+        p_col = "pvalue" if "pvalue" in example_df.columns else ("padj" if "padj" in example_df.columns else None)
+    if effect_col is None:
+        effect_col = "stat" if "stat" in example_df.columns else ("log2FoldChange" if "log2FoldChange" in example_df.columns else None)
+    if p_col is None or effect_col is None:
+        raise ValueError(
+            f"Could not infer DE columns; specify p_col/effect_col. Available columns include: {sorted(list(example_df.columns))}"
+        )
+
+    rows: List[pd.DataFrame] = []
+    for cluster_key, df in contrast_results.items():
+        meta = cluster_to_meta.get(str(cluster_key))
+        if meta is None:
+            continue
+        if "gene_id" in df.columns:
+            gene_col = "gene_id"
+        elif "gene_name" in df.columns:
+            gene_col = "gene_name"
+        else:
+            raise ValueError(f"DE dataframe for contrast {cluster_key!r} missing gene_id/gene_name columns.")
+        tmp = df[[gene_col, p_col, effect_col]].copy()
+        tmp = tmp.rename(columns={gene_col: "gene_id", p_col: "pvalue", effect_col: "stat"})
+        tmp.insert(0, "meta_cluster", str(meta))
+        rows.append(tmp)
+
+    if not rows:
+        return pd.DataFrame(
+            columns=[
+                "meta_cluster",
+                "tier",
+                "gene_id",
+                "support_n_samples",
+                "de_pvalue",
+                "de_effect",
+                "replicated_module_id",
+                "module_profile_weight",
+            ]
+        )
+
+    de_table = pd.concat(rows, axis=0, ignore_index=True)
+    return build_publication_gene_sets(
+        de_table=de_table,
+        replicated_modules=replicated_modules,
+        meta_cluster_module_profiles=meta_cluster_module_profiles,
+        meta_cluster_col="meta_cluster",
+        gene_col="gene_id",
+        de_p_col="pvalue",
+        de_effect_col="stat",
+        de_alpha=de_alpha,
+        support_min=support_min,
+        top_modules_per_meta_cluster=top_modules_per_meta_cluster,
+        core_max_genes=core_max_genes,
+        extended_max_genes=extended_max_genes,
+    )
+
+
 def _iter_thresholded_edges_from_dense_block(
     block: np.ndarray,
     *,

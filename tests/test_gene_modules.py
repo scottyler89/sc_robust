@@ -337,3 +337,54 @@ def test_build_publication_gene_sets_basic():
     # m1 should include D.
     m1_genes = set(out[out["meta_cluster"] == "m1"]["gene_id"].tolist())
     assert m1_genes == {"D"}
+
+
+def test_build_publication_gene_sets_from_de_result_adapter():
+    import pandas as pd
+    from sc_robust.de.base import DEAnalysisResult
+    from sc_robust.gene_modules import build_publication_gene_sets_from_de_result
+
+    de_result = DEAnalysisResult(
+        dds=None,
+        contrast_results={
+            "c0": pd.DataFrame(
+                {
+                    "gene_id": ["A", "B"],
+                    "pvalue": [1e-6, 1e-3],
+                    "stat": [5.0, 2.0],
+                }
+            ),
+            "c1": pd.DataFrame(
+                {
+                    "gene_id": ["D", "E"],
+                    "pvalue": [1e-6, 1e-2],
+                    "stat": [4.0, -1.0],
+                }
+            ),
+        },
+    )
+
+    replicated_modules = pd.DataFrame(
+        [
+            {"replicated_module_id": 10, "gene_id": "A", "support_n_samples": 2},
+            {"replicated_module_id": 10, "gene_id": "B", "support_n_samples": 2},
+            {"replicated_module_id": 11, "gene_id": "D", "support_n_samples": 2},
+        ]
+    )
+    profiles = pd.DataFrame(
+        [
+            {"meta_cluster": "m0", "replicated_module_id": 10, "profile_weight": 0.9, "n_clusters": 3},
+            {"meta_cluster": "m1", "replicated_module_id": 11, "profile_weight": 0.9, "n_clusters": 3},
+        ]
+    )
+    out = build_publication_gene_sets_from_de_result(
+        de_result=de_result,
+        cluster_to_meta={"c0": "m0", "c1": "m1"},
+        replicated_modules=replicated_modules,
+        meta_cluster_module_profiles=profiles,
+        de_alpha=0.05,
+        support_min=2,
+        top_modules_per_meta_cluster=1,
+    )
+    assert set(out[out["meta_cluster"] == "m0"]["gene_id"].tolist()) == {"A", "B"}
+    assert set(out[out["meta_cluster"] == "m1"]["gene_id"].tolist()) == {"D"}
