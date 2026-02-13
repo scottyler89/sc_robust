@@ -291,3 +291,49 @@ def test_compute_cluster_gene_module_scores_and_meta_profiles_cosine():
     # Each meta-cluster has 1 contributing cluster.
     assert set(prof["meta_cluster"].unique().tolist()) == {"m0", "m1"}
     assert set(prof["n_clusters"].unique().tolist()) == {1}
+
+
+def test_build_publication_gene_sets_basic():
+    import pandas as pd
+    from sc_robust.gene_modules import build_publication_gene_sets
+
+    de = pd.DataFrame(
+        [
+            {"meta_cluster": "m0", "gene_id": "A", "pvalue": 1e-6, "stat": 5.0},
+            {"meta_cluster": "m0", "gene_id": "B", "pvalue": 1e-3, "stat": 2.0},
+            {"meta_cluster": "m0", "gene_id": "C", "pvalue": 1e-2, "stat": -3.0},  # wrong direction
+            {"meta_cluster": "m1", "gene_id": "D", "pvalue": 1e-6, "stat": 4.0},
+        ]
+    )
+    replicated_modules = pd.DataFrame(
+        [
+            {"replicated_module_id": 10, "gene_id": "A", "support_n_samples": 3},
+            {"replicated_module_id": 10, "gene_id": "B", "support_n_samples": 1},
+            {"replicated_module_id": 11, "gene_id": "D", "support_n_samples": 2},
+        ]
+    )
+    profiles = pd.DataFrame(
+        [
+            {"meta_cluster": "m0", "replicated_module_id": 10, "profile_weight": 0.9, "n_clusters": 5},
+            {"meta_cluster": "m0", "replicated_module_id": 99, "profile_weight": 0.1, "n_clusters": 5},
+            {"meta_cluster": "m1", "replicated_module_id": 11, "profile_weight": 0.8, "n_clusters": 4},
+        ]
+    )
+
+    out = build_publication_gene_sets(
+        de_table=de,
+        replicated_modules=replicated_modules,
+        meta_cluster_module_profiles=profiles,
+        de_alpha=0.05,
+        support_min=2,
+        top_modules_per_meta_cluster=1,
+        core_max_genes=50,
+        extended_max_genes=200,
+    )
+
+    # m0 should include A (support>=2), but not B (support==1) and not C (negative stat).
+    m0_genes = set(out[out["meta_cluster"] == "m0"]["gene_id"].tolist())
+    assert m0_genes == {"A"}
+    # m1 should include D.
+    m1_genes = set(out[out["meta_cluster"] == "m1"]["gene_id"].tolist())
+    assert m1_genes == {"D"}

@@ -929,6 +929,174 @@ def compute_meta_cluster_module_profiles_cosine(
     return out
 
 
+def build_publication_gene_sets(
+    *,
+    de_table: pd.DataFrame,
+    replicated_modules: pd.DataFrame,
+    meta_cluster_module_profiles: pd.DataFrame,
+    meta_cluster_col: str = "meta_cluster",
+    gene_col: str = "gene_id",
+    de_p_col: str = "pvalue",
+    de_effect_col: str = "stat",
+    de_alpha: float = 0.05,
+    support_min: int = 1,
+    top_modules_per_meta_cluster: int = 5,
+    core_max_genes: int = 50,
+    extended_max_genes: int = 200,
+) -> pd.DataFrame:
+    """Create "core" and "extended" marker gene sets per meta-cluster.
+
+    This is a *rubric* helper: it does not run DE, and it does not assume a
+    particular DE back-end. It simply intersects:
+      1) DE-consistent genes (p<=alpha, effect>0 by default)
+      2) membership in top-ranked replicated modules for a meta-cluster
+      3) gene-level replication support from `replicated_modules.support_n_samples`
+
+    Returns a long table with columns:
+      - meta_cluster
+      - tier: core|extended
+      - gene_id
+      - support_n_samples
+      - de_pvalue
+      - de_effect
+      - replicated_module_id
+      - module_profile_weight
+    """
+    # Validate inputs
+    for col in (meta_cluster_col, gene_col, de_p_col, de_effect_col):
+        if col not in de_table.columns:
+            raise ValueError(f"de_table missing column: {col}")
+    for col in ("replicated_module_id", "gene_id", "support_n_samples"):
+        if col not in replicated_modules.columns:
+            raise ValueError(f"replicated_modules missing column: {col}")
+    for col in ("meta_cluster", "replicated_module_id", "profile_weight"):
+        if col not in meta_cluster_module_profiles.columns:
+            raise ValueError(f"meta_cluster_module_profiles missing column: {col}")
+
+    de = de_table[[meta_cluster_col, gene_col, de_p_col, de_effect_col]].copy()
+    de = de.rename(
+        columns={
+            meta_cluster_col: "meta_cluster",
+            gene_col: "gene_id",
+            de_p_col: "de_pvalue",
+            de_effect_col: "de_effect",
+        }
+    )
+    de["meta_cluster"] = de["meta_cluster"].astype(str)
+    de["gene_id"] = de["gene_id"].astype(str)
+    de["de_pvalue"] = pd.to_numeric(de["de_pvalue"], errors="coerce")
+    de["de_effect"] = pd.to_numeric(de["de_effect"], errors="coerce")
+    de = de.dropna(subset=["de_pvalue", "de_effect"]).copy()
+
+    # Default notion of "marker": significant and positive direction in the DE contrast.
+    de = de[(de["de_pvalue"] <= float(de_alpha)) & (de["de_effect"] > 0)].copy()
+    if de.empty:
+        return pd.DataFrame(
+            columns=[
+                "meta_cluster",
+                "tier",
+                "gene_id",
+                "support_n_samples",
+                "de_pvalue",
+                "de_effect",
+                "replicated_module_id",
+                "module_profile_weight",
+            ]
+        )
+
+    rm = replicated_modules[["replicated_module_id", "gene_id", "support_n_samples"]].copy()
+    rm["replicated_module_id"] = rm["replicated_module_id"].astype(int)
+    rm["gene_id"] = rm["gene_id"].astype(str)
+    rm["support_n_samples"] = rm["support_n_samples"].astype(int)
+    rm = rm[rm["support_n_samples"] >= int(support_min)].copy()
+    if rm.empty:
+        return pd.DataFrame(
+            columns=[
+                "meta_cluster",
+                "tier",
+                "gene_id",
+                "support_n_samples",
+                "de_pvalue",
+                "de_effect",
+                "replicated_module_id",
+                "module_profile_weight",
+            ]
+        )
+
+    prof = meta_cluster_module_profiles[["meta_cluster", "replicated_module_id", "profile_weight"]].copy()
+    prof["meta_cluster"] = prof["meta_cluster"].astype(str)
+    prof["replicated_module_id"] = prof["replicated_module_id"].astype(int)
+    prof["profile_weight"] = pd.to_numeric(prof["profile_weight"], errors="coerce").fillna(0.0).astype(np.float32)
+
+    # Pick top modules (by profile_weight) per meta_cluster.
+    top_modules = (
+        prof.sort_values(["meta_cluster", "profile_weight"], ascending=[True, False])
+        .groupby("meta_cluster", as_index=False)
+        .head(int(top_modules_per_meta_cluster))
+        .copy()
+    )
+    if top_modules.empty:
+        return pd.DataFrame(
+            columns=[
+                "meta_cluster",
+                "tier",
+                "gene_id",
+                "support_n_samples",
+                "de_pvalue",
+                "de_effect",
+                "replicated_module_id",
+                "module_profile_weight",
+            ]
+        )
+
+    # Candidate genes: DE markers that are in one of the top modules for that meta_cluster.
+    candidates = de.merge(rm, on="gene_id", how="inner")
+    candidates = candidates.merge(top_modules, on=["meta_cluster", "replicated_module_id"], how="inner")
+    if candidates.empty:
+        return pd.DataFrame(
+            columns=[
+                "meta_cluster",
+                "tier",
+                "gene_id",
+                "support_n_samples",
+                "de_pvalue",
+                "de_effect",
+                "replicated_module_id",
+                "module_profile_weight",
+            ]
+        )
+
+    candidates = candidates.rename(columns={"profile_weight": "module_profile_weight"})
+    # Rank: module profile weight (desc), then stronger DE effect (desc), then lower p (asc).
+    candidates = candidates.sort_values(
+        ["meta_cluster", "module_profile_weight", "de_effect", "de_pvalue"],
+        ascending=[True, False, False, True],
+    )
+
+    def _take_tier(df: pd.DataFrame, max_n: int) -> pd.DataFrame:
+        return df.groupby("meta_cluster", as_index=False).head(int(max_n)).copy()
+
+    core = _take_tier(candidates, core_max_genes)
+    core["tier"] = "core"
+    extended = _take_tier(candidates, extended_max_genes)
+    extended["tier"] = "extended"
+
+    out = pd.concat([core, extended], axis=0, ignore_index=True)
+    out = out[
+        [
+            "meta_cluster",
+            "tier",
+            "gene_id",
+            "support_n_samples",
+            "de_pvalue",
+            "de_effect",
+            "replicated_module_id",
+            "module_profile_weight",
+        ]
+    ].copy()
+    return out
+
+
 def _iter_thresholded_edges_from_dense_block(
     block: np.ndarray,
     *,
