@@ -120,3 +120,33 @@ def test_robust_pipeline_zero_selected_features_is_graceful(tmp_path, monkeypatc
     assert getattr(ro, "no_reproducible_pcs", False) is True
     assert ro.graph is None
     assert ro.provenance.get("status") == "no_features_selected"
+
+
+def test_robust_save_attaches_gene_module_artifacts(tmp_path):
+    import json
+    import gzip
+    import sc_robust.utils as utils
+    import sc_robust.sc_robust as sr
+
+    ro = sr.robust.__new__(sr.robust)
+    ro.provenance = {}
+    ro.scratch_dir = tmp_path
+
+    # Create minimal expected artifacts.
+    (tmp_path / "gene_modules.tsv.gz").write_bytes(gzip.compress(b"gene_id\tmodule_id\nA\t0\n"))
+    (tmp_path / "gene_edges_pos.tsv.gz").write_bytes(gzip.compress(b"i\tj\trho\tsign\n0\t1\t0.5\tpos\n"))
+    (tmp_path / "gene_edges_neg.tsv.gz").write_bytes(gzip.compress(b"i\tj\trho\tsign\n0\t2\t-0.5\tneg\n"))
+    (tmp_path / "gene_module_antagonism.tsv.gz").write_bytes(
+        gzip.compress(
+            b"module_a\tmodule_b\tn_edges\tmean_rho\tedge_density\tsize_a\tsize_b\n0\t1\t1\t-0.5\t0.1\t2\t2\n"
+        )
+    )
+    (tmp_path / "module_stats.json").write_text(json.dumps({"ok": True}), encoding="utf-8")
+
+    out_path = tmp_path / "ro.dill"
+    ro.save(out_path)
+
+    ro2 = utils.load_ro(out_path)
+    artifacts = ro2.provenance.get("gene_modules", {}).get("artifacts", {})
+    assert "gene_modules_tsv_gz" in artifacts
+    assert "module_stats_json" in artifacts

@@ -327,9 +327,77 @@ class robust(object):
     #
     #
     def save(self, f):
-        """Save the robust object to a file using dill."""
+        """Save the robust object to a file using dill.
+
+        If `scratch_dir` is set and gene-module artifacts exist on disk, their paths
+        are attached to `self.provenance` so downstream users can discover/reuse them
+        after re-loading the object.
+        """
+        try:
+            self._attach_gene_module_artifacts()
+        except Exception:
+            # Best-effort only: saving the robust object should not fail due to
+            # missing optional post-analysis artifacts.
+            pass
         with open(f, 'wb') as file:
             dill.dump(self, file)
+
+    def _attach_gene_module_artifacts(self) -> None:
+        """Record any gene-module artifacts present under `scratch_dir` (best-effort)."""
+        if getattr(self, "scratch_dir", None) is None:
+            return
+        scratch_dir = Path(self.scratch_dir)
+        if not scratch_dir.exists():
+            return
+        expected = {
+            "gene_modules_tsv_gz": scratch_dir / "gene_modules.tsv.gz",
+            "gene_edges_pos_tsv_gz": scratch_dir / "gene_edges_pos.tsv.gz",
+            "gene_edges_neg_tsv_gz": scratch_dir / "gene_edges_neg.tsv.gz",
+            "gene_module_antagonism_tsv_gz": scratch_dir / "gene_module_antagonism.tsv.gz",
+            "module_stats_json": scratch_dir / "module_stats.json",
+        }
+        present = {k: str(p) for k, p in expected.items() if p.exists()}
+        if not present:
+            return
+        self.provenance.setdefault("gene_modules", {})
+        self.provenance["gene_modules"]["artifacts"] = present
+        # Also store on the object for convenience after dill load.
+        self.gene_module_artifacts = present
+
+    def run_gene_modules(
+        self,
+        *,
+        split_mode: str = "union",
+        chunk_rows: int = 512,
+        resolution: float = 1.0,
+        k_gene: Optional[int] = None,
+        min_k_gene: int = 10,
+        max_k_gene: int = 200,
+        persist_edges: bool = True,
+    ) -> Dict[str, str]:
+        """Run turn-key gene module discovery using `scratch_dir/*/spearman.hdf5`.
+
+        This is an optional post-analysis step; it does not alter the core robust
+        algorithm outputs (graph/labels/DE), but it will write artifacts under
+        `scratch_dir` and attach them to the saved object provenance.
+        """
+        if getattr(self, "scratch_dir", None) is None:
+            raise ValueError("run_gene_modules requires robust(..., scratch_dir=...)")
+        from .gene_modules import run_gene_modules_from_scratch_dir
+
+        paths = run_gene_modules_from_scratch_dir(
+            self.scratch_dir,
+            split_mode=split_mode,
+            chunk_rows=chunk_rows,
+            resolution=resolution,
+            k_gene=k_gene,
+            min_k_gene=min_k_gene,
+            max_k_gene=max_k_gene,
+            persist_edges=persist_edges,
+            out_dir=self.scratch_dir,
+        )
+        self._attach_gene_module_artifacts()
+        return {k: str(v) for k, v in paths.items()}
 
     def _hash_strings(self, values: List[str]) -> str:
         h = hashlib.sha256()

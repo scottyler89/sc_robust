@@ -219,6 +219,166 @@ offline/HPC friendliness, reproducibility, provenance, and clearer conventions.
 Phase A — Ergonomics + Safety (Low Risk)
 ----------------------------------------
 
+
+2026 Meta-Analysis — Replicated Gene Programs from `spearman.hdf5`
+==================================================================
+
+Goal
+----
+Build a sample-aware, split-aware meta-analysis pipeline over the `spearman.hdf5` artifacts written by `anticor_features`, in order to:
+
+- Identify replicated positive-correlation gene modules (gene programs) across samples.
+- Preserve sample-unique structure, while quantifying reproducibility.
+- Leverage per-sample empirical cutoffs `Cpos/Cneg` to keep “edge significance” calibrated across heterogeneous samples.
+- Support optional local graph weighting / degree control to improve robustness to sample size and correlation-scale shifts.
+
+Inputs (per (sample, split))
+----------------------------
+
+- Must read from HDF5:
+  - `infile` (Spearman matrix; same as prior versions)
+  - `ids/feature_ids_kept` (gene IDs in matrix order)
+  - `meta/provenance_json` (schema + pathway removal + params; JSON string)
+  - `infile.attrs["Cpos"]`, `infile.attrs["Cneg"]` (empirical cutoffs)
+
+Deliverables (core artifacts)
+-----------------------------
+
+- `scratch_dir_index.tsv.gz`: manifest of discovered artifacts (sample, split, paths, schema_version, n_genes, Cpos/Cneg, pathway removal settings).
+- `edges_pos.parquet` / `edges_neg.parquet` (or `.tsv.gz`): per-sample sparse edge lists with split support fields.
+- `modules_per_sample.tsv.gz`: module membership per sample (+ per-module metrics).
+- `meta_modules.tsv.gz`: replicated modules across samples with support statistics.
+- `module_antagonism_per_sample.tsv.gz` and `meta_module_antagonism.tsv.gz`: negative-edge summaries between modules.
+
+Phase 0 — Spec + Schema Lock
+----------------------------
+
+- [ ] Define output schemas (TSV/Parquet) including required provenance pointers:
+  - HDF5 path, `schema_version`, `provenance_json` hash, `Cpos/Cneg`, and thresholds used for any downstream filtering.
+- [ ] Decide file format defaults (TSV.GZ vs Parquet) and naming conventions under an output root directory.
+
+Single-Dataset “Turn-Key” Module Discovery (Plugin)
+---------------------------------------------------
+
+In addition to cross-sample replication, provide a simple single-dataset path:
+
+- Input: a single `spearman.hdf5` (or a train/val pair under a single scratch dir).
+- Output: gene modules + antagonism summaries + provenance-rich manifests.
+- Rationale: auto-identifying gene programs/modules is useful even without a cohort meta-analysis.
+
+Tasks:
+- [ ] Implement `sc_robust.gene_modules` helpers:
+  - `read_spearman_h5(...)` (IDs + cutoffs + provenance)
+  - `extract_thresholded_edges(...)` (Cpos/Cneg gating)
+  - `reweight_edges_local(...)` (optional local scaling / SNN weights)
+  - `run_leiden_gene_modules(...)` (positive graph → modules)
+  - `summarize_module_antagonism(...)` (negative graph summaries)
+- [ ] Provide “drop-in” convenience wrappers for existing pipelines:
+  - accept a `scratch_dir` produced by `robust(..., scratch_dir=...)` and auto-find per-split `spearman.hdf5`.
+  - produce `modules.tsv.gz` + `module_stats.json` in that same scratch dir.
+- [ ] Ensure outputs include pointers to:
+  - `meta/provenance_json`, `Cpos/Cneg`, `feature_ids_kept`, and the exact weighting/Leiden parameters used.
+
+Phase 1 — Preflight + Indexing (No Biology)
+-------------------------------------------
+
+- [ ] Enumerate all scratch dirs; find `spearman.hdf5` under `train/` and `val/` (split-aware).
+- [ ] Extract and record:
+  - `feature_ids_kept`, `n_genes`, `schema_version`, pathway removal settings, and `Cpos/Cneg`.
+- [ ] Validate:
+  - gene IDs are unique within each file
+  - `Cpos` and `Cneg` are finite and within [-1, 1]; flag degenerate cutoffs (e.g. ±1) with a clear reason.
+- [ ] Emit `scratch_dir_index.tsv.gz` (+ optional `index.json` summary).
+
+Phase 2 — Per-Sample Signed Sparse Graphs (Using `Cpos/Cneg`)
+-------------------------------------------------------------
+
+- [ ] Create thresholded sparse edges per (sample, split):
+  - Positive edges: `rho >= Cpos`
+  - Negative edges: `rho <= Cneg`
+  - Store as COO/CSR (edge list + optional sparse matrix on disk).
+- [ ] Within-sample train/val union:
+  - Merge policy (inspired by existing train/val cell-graph merge, but sign-safe):
+    - Include an edge if it is over-threshold in train OR val.
+    - If present in both splits, require sign agreement; otherwise drop and record as sign-discordant.
+    - Store `present_train`, `present_val`, `agree_sign`, and `rho_mean` (with non-sig treated as 0 for averaging).
+    - Mark confidence: `both_splits` vs `single_split` to support downstream filtering without losing sample-specific structure.
+- [ ] Optional local graph weighting / degree control (positive edges for modules):
+  - KNN-style degree cap per gene (default ON for module discovery; mutual-KNN default OFF)
+    - Default `k_gene = max(min_k, round(log(n_genes)))`, with `min_k=10` and `k_gene <= 200` and `k_gene <= n_genes-1`.
+    - Apply to the positive-edge graph only (never mix pos/neg); negatives are summarized separately for antagonism.
+  - local scaling / percentile weights (“beyond cutoff” normalization)
+  - SNN/Jaccard reweighting based on neighbor overlap
+  - Always apply after `Cpos/Cneg` gating (preserve empirical calibration).
+
+Phase 3 — Within-Sample Gene Modules (Positive Graph)
+-----------------------------------------------------
+
+- [ ] Run Leiden on the positive-edge graph per sample (weighted).
+- [ ] Emit `modules_per_sample.tsv.gz` with:
+  - `sample`, `split_mode` (train/val/union), `module_id`, `gene_id`, and per-gene centrality metrics.
+- [ ] Emit `module_stats.json` per sample with:
+  - module size distribution, intra-module weight summaries, and provenance pointers.
+- [ ] Optional refinement:
+  - drop tiny modules below `m_min` genes (but record what was dropped).
+
+Phase 4 — Within-Sample Module Antagonism (Negative Graph)
+----------------------------------------------------------
+
+- [ ] Summarize negative structure between positive modules:
+  - negative edge density, mean negative weight, fraction strong pairs.
+- [ ] Emit `module_antagonism_per_sample.tsv.gz`.
+
+Phase 5 — Cross-Sample Replication (Key Meta Step)
+---------------------------------------------------
+
+Option A — Co-membership probability graph:
+- [ ] Build `P(g1,g2)` = fraction of samples where `g1,g2` co-occur in a module (conditioned on both present).
+- [ ] Threshold `P >= p0`; run Leiden to define replicated modules.
+
+Option B — Module overlap matching:
+- [ ] Build a module similarity graph across samples (Jaccard/overlap with minimum overlap count).
+- [ ] Cluster this graph into “meta-modules”.
+- [ ] Define:
+  - core genes = appear in ≥k samples in the meta-module
+  - peripheral genes = lower support but high within-sample centrality
+
+Common replication constraints:
+- [ ] Require gene presence support ≥2 samples (default).
+- [ ] Record heterogeneity: support fraction, within-sample stability (train/val agreement), and strength distributions.
+
+Phase 6 — Replicated Antagonistic Axes
+--------------------------------------
+
+- [ ] For each pair of replicated modules, meta-analyze antagonism across samples:
+  - `n_samples`, `consistency`, and a robust antagonism strength summary.
+- [ ] Emit `meta_module_antagonism.tsv.gz`.
+
+Phase 7 — Link Replicated Programs to Replicated Cell Subtypes
+--------------------------------------------------------------
+
+- [ ] Score replicated gene modules on cells using test pf-log counts (no Scanpy preprocessing assumptions).
+- [ ] Summarize module scores per within-sample cluster and meta-cluster.
+- [ ] Meta-analyze module enrichment by meta-cluster (random effects).
+- [ ] Emit `meta_cluster_module_enrichment.tsv.gz`.
+
+Phase 8 — “Publication Gene Sets” Rubric
+----------------------------------------
+
+- [ ] Choose marker sets per meta-cluster using both:
+  - replicated module membership evidence (core/peripheral)
+  - meta-DE evidence
+- [ ] Emit core (10–50) and extended (≤200) marker sets with support stats.
+
+Phase 9 — Reproducibility + Provenance
+--------------------------------------
+
+- [ ] Ensure every output row/file includes:
+  - pointer to source HDF5 provenance_json + `Cpos/Cneg`, thresholds (`p0`, `k`, `m_min`), and code version.
+- [ ] Cache strategy:
+  - never copy dense matrices; persist sparse edges + module assignments + summaries.
+  - allow purging intermediates while keeping `spearman.hdf5` + manifests.
+
 - [x] Replace library-level `print()` with `logging` (structured messages + progress hints).
 - [x] Avoid persistent global RNG side effects (scope/restore state; thread `random_state` where supported).
 - [ ] Eliminate global seeding entirely where possible (may require upstream support in `count_split`, `anticor_features`, `pymetis`).

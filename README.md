@@ -118,6 +118,62 @@ This is the split-based workflow that builds a consensus KNN graph from train/va
 
 Basics
 
+Gene Modules (Single Dataset + Cohort Meta-Analysis)
+---------------------------------------------------
+
+`sc_robust` can reuse the `spearman.hdf5` artifacts written by `anticor_features` (via `robust(..., scratch_dir=...)`)
+to build **gene–gene graphs**, discover **positive co-regulated gene modules**, and summarize **negative antagonism**
+between those modules.
+
+Key idea:
+- **Positive correlations** answer: “same cell-state program” → used for module discovery (Leiden).
+- **Negative correlations** answer: “mutually exclusive programs” → used only for module antagonism summaries.
+
+Single dataset (one scratch dir)
+
+```
+from sc_robust.sc_robust import robust
+
+ro = robust(
+    adata,
+    gene_ids=adata.var["gene_ids"].tolist(),
+    scratch_dir="results/sample_001",
+    offline_mode=True,
+)
+
+# Optional post-step (writes artifacts under scratch_dir and records paths in ro.provenance on save)
+ro.run_gene_modules(split_mode="union", resolution=1.0)
+ro.save("results/sample_001/robust_object.dill")
+```
+
+Outputs under `scratch_dir`:
+- `gene_modules.tsv.gz`
+- `gene_edges_pos.tsv.gz`, `gene_edges_neg.tsv.gz`
+- `gene_module_antagonism.tsv.gz`
+- `module_stats.json`
+- `gene_modules.report.json`
+
+Cohort meta-analysis (many scratch dirs)
+
+```
+from pathlib import Path
+from sc_robust.gene_modules import run_gene_module_meta_analysis_for_cohort
+
+scratch_dirs = [Path("results") / s for s in ["S1", "S2", "S3"]]
+out = run_gene_module_meta_analysis_for_cohort(
+    scratch_dirs,
+    out_dir=Path("results") / "gene_module_meta",
+)
+print(out["replicated_modules"])  # replicated_modules.tsv.gz (annotated with support_n_samples)
+```
+
+Outputs under `out_dir`:
+- `gene_modules_manifest.tsv.gz`
+- `replicated_modules.tsv.gz` (includes `support_n_samples`)
+- `replicated_module_instances.tsv.gz`
+- `replicated_module_antagonism.tsv.gz`
+- `*.report.json` sidecars (quick summary + artifact pointers)
+
 ```
 import anndata as ad
 import scanpy as sc
