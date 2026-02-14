@@ -231,14 +231,25 @@ def run_gene_modules_for_cohort(
             edge_pos_path = sample_out / "gene_edges_pos.tsv.gz"
             edge_neg_path = sample_out / "gene_edges_neg.tsv.gz"
             if reuse_existing_edges and edge_pos_path.exists() and edge_neg_path.exists():
-                art_train = read_spearman_h5(scratch / "train" / "spearman.hdf5")
                 pos = pd.read_csv(edge_pos_path, sep="\t")
                 neg = pd.read_csv(edge_neg_path, sep="\t")
+                # Infer the node universe from existing artifacts (post-union-by-gene-id).
+                modules_path = sample_out / "gene_modules.tsv.gz"
+                if modules_path.exists():
+                    gene_ids_union = sorted(pd.read_csv(modules_path, sep="\t")["gene_id"].astype(str).unique().tolist())
+                elif {"gene_a", "gene_b"}.issubset(pos.columns):
+                    gene_ids_union = sorted(
+                        set(pos["gene_a"].astype(str).tolist()).union(set(pos["gene_b"].astype(str).tolist()))
+                    )
+                else:
+                    art_train = read_spearman_h5(scratch / "train" / "spearman.hdf5")
+                    gene_ids_union = list(art_train.feature_ids_kept)
+                n_genes = int(len(gene_ids_union))
                 # Build modules from existing positive edges (respect current k_gene defaults).
                 weight_col = "w_mean" if "w_mean" in pos.columns else ("rho_mean" if "rho_mean" in pos.columns else "rho")
                 pos_knn = sparsify_positive_edges_knn(
                     pos,
-                    n_genes=art_train.n_features,
+                    n_genes=n_genes,
                     k_gene=k_gene,
                     min_k=min_k_gene,
                     max_k=max_k_gene,
@@ -246,13 +257,13 @@ def run_gene_modules_for_cohort(
                 )
                 pos_for_leiden = pos_knn[["i", "j", weight_col]].rename(columns={weight_col: "rho"}).copy()
                 pos_for_leiden["sign"] = "pos"
-                labels = run_leiden_gene_modules(pos_for_leiden, n_genes=art_train.n_features, resolution=resolution)
-                pos_adj = edges_to_sparse_adjacency(pos_for_leiden, n_nodes=art_train.n_features, symmetric=True).tocsr()
+                labels = run_leiden_gene_modules(pos_for_leiden, n_genes=n_genes, resolution=resolution)
+                pos_adj = edges_to_sparse_adjacency(pos_for_leiden, n_nodes=n_genes, symmetric=True).tocsr()
                 strength = np.asarray(pos_adj.sum(axis=1)).reshape(-1)
                 degree = np.asarray((pos_adj != 0).sum(axis=1)).reshape(-1)
                 modules_df = pd.DataFrame(
                     {
-                        "gene_id": art_train.feature_ids_kept,
+                        "gene_id": gene_ids_union,
                         "module_id": labels.astype(int),
                         "degree_pos": degree.astype(int),
                         "strength_pos": strength.astype(np.float32),
@@ -292,7 +303,13 @@ def run_gene_modules_for_cohort(
                     positive_edges=pos,
                     negative_edges=neg,
                 )
-                paths = {"gene_modules": modules_path, "module_stats": stats_path, "gene_edges_pos": edge_pos_path, "gene_edges_neg": edge_neg_path, "gene_module_antagonism": antagonism_path}
+                paths = {
+                    "gene_modules": modules_path,
+                    "module_stats": stats_path,
+                    "gene_edges_pos": edge_pos_path,
+                    "gene_edges_neg": edge_neg_path,
+                    "gene_module_antagonism": antagonism_path,
+                }
             else:
                 paths = run_gene_modules_from_scratch_dir(
                     scratch,
@@ -1327,7 +1344,12 @@ def _union_split_edges(
     edges_train: pd.DataFrame,
     edges_val: pd.DataFrame,
 ) -> Tuple[pd.DataFrame, Dict[str, Any]]:
-    """Union edge lists, recording split presence and mean rho (missing treated as 0)."""
+    """Union edge lists, recording split presence and mean rho.
+
+    Mean behavior:
+    - If an edge is present in only one split, rho_mean equals that split's rho.
+    - If present in both, rho_mean is the arithmetic mean of the two.
+    """
     cols = ["i", "j", "sign", "rho"]
     train = edges_train[cols].rename(columns={"rho": "rho_train"}).copy()
     val = edges_val[cols].rename(columns={"rho": "rho_val"}).copy()
@@ -1335,9 +1357,10 @@ def _union_split_edges(
     merged = train.merge(val, on=["i", "j", "sign"], how="outer")
     merged["present_train"] = merged["rho_train"].notna()
     merged["present_val"] = merged["rho_val"].notna()
-    merged["rho_train"] = merged["rho_train"].fillna(0.0)
-    merged["rho_val"] = merged["rho_val"].fillna(0.0)
-    merged["rho_mean"] = (merged["rho_train"] + merged["rho_val"]) / 2.0
+    merged["rho_train"] = merged["rho_train"].astype(np.float32)
+    merged["rho_val"] = merged["rho_val"].astype(np.float32)
+    denom = merged["present_train"].astype(int) + merged["present_val"].astype(int)
+    merged["rho_mean"] = (merged["rho_train"].fillna(0.0) + merged["rho_val"].fillna(0.0)) / denom.clip(lower=1)
 
     merged["agree_sign"] = True
     both = merged["present_train"] & merged["present_val"]
@@ -1351,6 +1374,83 @@ def _union_split_edges(
     merged["confidence"] = np.where(both, "both_splits", "single_split")
     stats = {"n_sign_discordant_dropped": n_sign_discordant}
     return merged, stats
+
+
+def _edges_to_gene_pairs(edges: pd.DataFrame, *, feature_ids_kept: Sequence[str], split_label: str) -> pd.DataFrame:
+    """Map an index-based edge list to canonicalized gene-id pairs."""
+    if edges.empty:
+        return pd.DataFrame(columns=["gene_a", "gene_b", f"rho_{split_label}", f"sign_{split_label}"])
+    ids = list(feature_ids_kept)
+    i = edges["i"].to_numpy(dtype=np.int64, copy=False)
+    j = edges["j"].to_numpy(dtype=np.int64, copy=False)
+    rho = edges["rho"].to_numpy(dtype=np.float32, copy=False)
+    sign = edges["sign"].astype(str).to_numpy(copy=False)
+
+    gene_i = np.array([ids[int(x)] for x in i], dtype=object)
+    gene_j = np.array([ids[int(x)] for x in j], dtype=object)
+    gene_a = np.minimum(gene_i, gene_j)
+    gene_b = np.maximum(gene_i, gene_j)
+    return pd.DataFrame(
+        {
+            "gene_a": gene_a,
+            "gene_b": gene_b,
+            f"rho_{split_label}": rho,
+            f"sign_{split_label}": sign,
+        }
+    )
+
+
+def _union_split_edges_by_gene_id(
+    edges_train: pd.DataFrame,
+    *,
+    train_feature_ids_kept: Sequence[str],
+    edges_val: pd.DataFrame,
+    val_feature_ids_kept: Sequence[str],
+) -> Tuple[pd.DataFrame, Dict[str, Any]]:
+    """Union edge lists by gene IDs (no requirement that train/val kept lists match).
+
+    Policy:
+    - include an edge if it passes threshold in train OR val
+    - if present in both splits, require sign agreement; otherwise drop
+    - store per-split rho/sign and compute rho_mean (missing treated as 0) and confidence label
+    """
+    t = _edges_to_gene_pairs(edges_train, feature_ids_kept=train_feature_ids_kept, split_label="train")
+    v = _edges_to_gene_pairs(edges_val, feature_ids_kept=val_feature_ids_kept, split_label="val")
+    merged = t.merge(v, on=["gene_a", "gene_b"], how="outer")
+
+    merged["present_train"] = merged["rho_train"].notna()
+    merged["present_val"] = merged["rho_val"].notna()
+
+    merged["rho_train"] = merged["rho_train"].astype(np.float32)
+    merged["rho_val"] = merged["rho_val"].astype(np.float32)
+
+    merged["sign_train"] = merged["sign_train"].fillna("")
+    merged["sign_val"] = merged["sign_val"].fillna("")
+
+    both = merged["present_train"] & merged["present_val"]
+    sign_discordant_mask = both & (merged["sign_train"] != merged["sign_val"])
+    n_sign_discordant = int(sign_discordant_mask.sum())
+    merged = merged[~sign_discordant_mask].copy()
+
+    merged["sign"] = np.where(merged["present_train"], merged["sign_train"], merged["sign_val"])
+    denom = merged["present_train"].astype(int) + merged["present_val"].astype(int)
+    merged["rho_mean"] = (merged["rho_train"].fillna(0.0) + merged["rho_val"].fillna(0.0)) / denom.clip(lower=1)
+    merged["confidence"] = np.where(merged["present_train"] & merged["present_val"], "both_splits", "single_split")
+
+    stats = {"n_sign_discordant_dropped": n_sign_discordant}
+    return merged, stats
+
+
+def _gene_pair_edges_to_index_edges(
+    edges: pd.DataFrame,
+    *,
+    gene_ids: Sequence[str],
+) -> pd.DataFrame:
+    gene_to_idx = {str(g): int(i) for i, g in enumerate(gene_ids)}
+    out = edges.copy()
+    out["i"] = out["gene_a"].map(gene_to_idx).astype(int)
+    out["j"] = out["gene_b"].map(gene_to_idx).astype(int)
+    return out
 
 
 def _default_k_gene(n_genes: int, *, min_k: int = 10, max_k: int = 200) -> int:
@@ -1520,6 +1620,9 @@ def run_gene_modules_from_scratch_dir(
     if not train_h5.exists() or not val_h5.exists():
         raise FileNotFoundError(f"Expected train/val spearman.hdf5 under {scratch_dir}")
 
+    if split_mode != "union":
+        raise ValueError("Only split_mode='union' is supported for gene modules.")
+
     out_dir = Path(out_dir) if out_dir is not None else scratch_dir
     out_dir.mkdir(parents=True, exist_ok=True)
 
@@ -1529,48 +1632,44 @@ def run_gene_modules_from_scratch_dir(
     prov_val = _safe_json_loads(art_val.provenance_json)
     prov_fields_train = _extract_provenance_fields(prov_train)
     prov_fields_val = _extract_provenance_fields(prov_val)
-    if art_train.feature_ids_kept != art_val.feature_ids_kept:
-        raise ValueError("train/val feature_ids_kept differ; align feature selection before module discovery.")
 
     edges_train = extract_thresholded_edges(train_h5, chunk_rows=chunk_rows, upper_triangle_only=True)
     edges_val = extract_thresholded_edges(val_h5, chunk_rows=chunk_rows, upper_triangle_only=True)
 
-    if split_mode not in {"train", "val", "union"}:
-        raise ValueError("split_mode must be one of: 'train', 'val', 'union'")
+    edges_gene, merge_stats = _union_split_edges_by_gene_id(
+        edges_train,
+        train_feature_ids_kept=art_train.feature_ids_kept,
+        edges_val=edges_val,
+        val_feature_ids_kept=art_val.feature_ids_kept,
+    )
+    edge_meta = {"mode": "union_by_gene_id"}
 
-    merge_stats: Dict[str, Any] = {}
-    if split_mode == "train":
-        edges = edges_train.copy()
-        edge_meta = {"mode": "train"}
-    elif split_mode == "val":
-        edges = edges_val.copy()
-        edge_meta = {"mode": "val"}
-    else:
-        edges, merge_stats = _union_split_edges(edges_train, edges_val)
-        edge_meta = {"mode": "union"}
+    # Define the node universe as the union of kept genes across splits (stable order).
+    gene_ids_union = sorted(set(art_train.feature_ids_kept).union(set(art_val.feature_ids_kept)))
+    edges = _gene_pair_edges_to_index_edges(edges_gene, gene_ids=gene_ids_union)
 
     # Weight edges by "excess beyond cutoff" (log1p), per-split, then average across splits
-    # (missing treated as 0) to match our union merge semantics.
+    # over present splits (do NOT treat missing as 0).
     if "rho_train" in edges.columns:
-        edges["w_train"] = _edge_weight_from_excess(
+        w_train = _edge_weight_from_excess(
             rho=edges["rho_train"].fillna(0.0).to_numpy(),
             sign=edges["sign"].to_numpy(),
             cpos=art_train.cpos,
             cneg=art_train.cneg,
-        )
+        ).astype(np.float32)
+        edges["w_train"] = np.where(edges["present_train"].to_numpy(), w_train, np.nan).astype(np.float32)
     if "rho_val" in edges.columns:
-        edges["w_val"] = _edge_weight_from_excess(
+        w_val = _edge_weight_from_excess(
             rho=edges["rho_val"].fillna(0.0).to_numpy(),
             sign=edges["sign"].to_numpy(),
             cpos=art_val.cpos,
             cneg=art_val.cneg,
-        )
+        ).astype(np.float32)
+        edges["w_val"] = np.where(edges["present_val"].to_numpy(), w_val, np.nan).astype(np.float32)
     if "w_train" in edges.columns or "w_val" in edges.columns:
-        edges["w_train"] = edges.get("w_train", 0.0)
-        edges["w_val"] = edges.get("w_val", 0.0)
-        edges["w_mean"] = ((edges["w_train"].astype(np.float32) + edges["w_val"].astype(np.float32)) / 2.0).astype(
-            np.float32
-        )
+        denom = edges["present_train"].astype(int) + edges["present_val"].astype(int)
+        edges["w_mean"] = (edges["w_train"].fillna(0.0) + edges["w_val"].fillna(0.0)) / denom.clip(lower=1)
+        edges["w_mean"] = edges["w_mean"].astype(np.float32)
 
     pos, neg = _split_edges_by_sign(edges)
 
@@ -1578,7 +1677,7 @@ def run_gene_modules_from_scratch_dir(
     # Degree control on positive graph for module discovery
     pos_knn = sparsify_positive_edges_knn(
         pos,
-        n_genes=art_train.n_features,
+        n_genes=len(gene_ids_union),
         k_gene=k_gene,
         min_k=min_k_gene,
         max_k=max_k_gene,
@@ -1587,15 +1686,15 @@ def run_gene_modules_from_scratch_dir(
     pos_for_leiden = pos_knn[["i", "j", weight_col]].rename(columns={weight_col: "rho"}).copy()
     pos_for_leiden["sign"] = "pos"
 
-    labels = run_leiden_gene_modules(pos_for_leiden, n_genes=art_train.n_features, resolution=resolution)
+    labels = run_leiden_gene_modules(pos_for_leiden, n_genes=len(gene_ids_union), resolution=resolution)
 
-    pos_adj = edges_to_sparse_adjacency(pos_for_leiden, n_nodes=art_train.n_features, symmetric=True).tocsr()
+    pos_adj = edges_to_sparse_adjacency(pos_for_leiden, n_nodes=len(gene_ids_union), symmetric=True).tocsr()
     strength = np.asarray(pos_adj.sum(axis=1)).reshape(-1)
     degree = np.asarray((pos_adj != 0).sum(axis=1)).reshape(-1)
 
     modules_df = pd.DataFrame(
         {
-            "gene_id": art_train.feature_ids_kept,
+            "gene_id": gene_ids_union,
             "module_id": labels.astype(int),
             "degree_pos": degree.astype(int),
             "strength_pos": strength.astype(np.float32),
@@ -1609,6 +1708,7 @@ def run_gene_modules_from_scratch_dir(
     edge_neg_path = out_dir / "gene_edges_neg.tsv.gz"
     antagonism_path = out_dir / "gene_module_antagonism.tsv.gz"
     if persist_edges:
+        # Include gene-id pairs for stable downstream joins across samples.
         pos.to_csv(edge_pos_path, sep="\t", index=False, compression="gzip")
         neg.to_csv(edge_neg_path, sep="\t", index=False, compression="gzip")
 
@@ -1619,7 +1719,7 @@ def run_gene_modules_from_scratch_dir(
     source_meta = {
         "scratch_dir": str(scratch_dir),
         "feature_ids_kept_sha256": hashlib.sha256(
-            ("\n".join(art_train.feature_ids_kept)).encode("utf-8", errors="ignore")
+            ("\n".join(gene_ids_union)).encode("utf-8", errors="ignore")
         ).hexdigest(),
         "train": {
             "path": str(art_train.path),
@@ -1672,7 +1772,7 @@ def run_gene_modules_from_scratch_dir(
             "artifacts": {k: v for k, v in artifact_paths.items() if v},
             "params": params,
             "summary": {
-                "n_genes": int(art_train.n_features),
+                "n_genes": int(len(gene_ids_union)),
                 "n_positive_edges": int(pos.shape[0]),
                 "n_negative_edges": int(neg.shape[0]),
                 "n_modules": int(pd.Series(labels).nunique()),

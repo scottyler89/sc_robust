@@ -110,6 +110,40 @@ def test_run_gene_modules_from_scratch_dir_writes_outputs(tmp_path):
     assert "provenance_fields" in payload["source"]["train"]
 
 
+def test_run_gene_modules_from_scratch_dir_allows_train_val_feature_id_mismatch(tmp_path):
+    import pandas as pd
+    import sc_robust.gene_modules as gm
+
+    # Train keeps G0..G3, val keeps G1..G4 (mismatch is expected in real runs).
+    train_ids = ["G0", "G1", "G2", "G3"]
+    val_ids = ["G1", "G2", "G3", "G4"]
+
+    # Simple rho matrices with one strong positive edge among shared genes.
+    rho_train = np.eye(4, dtype=np.float32)
+    rho_train[1, 2] = rho_train[2, 1] = 0.8  # G1-G2
+    rho_val = np.eye(4, dtype=np.float32)
+    rho_val[0, 1] = rho_val[1, 0] = 0.85  # G1-G2 (in val indexing)
+
+    scratch = tmp_path / "scratch"
+    (scratch / "train").mkdir(parents=True, exist_ok=True)
+    (scratch / "val").mkdir(parents=True, exist_ok=True)
+    _write_toy_spearman_h5(scratch / "train" / "spearman.hdf5", feature_ids=train_ids, rho=rho_train, cpos=0.5, cneg=-0.5)
+    _write_toy_spearman_h5(scratch / "val" / "spearman.hdf5", feature_ids=val_ids, rho=rho_val, cpos=0.5, cneg=-0.5)
+
+    out = gm.run_gene_modules_from_scratch_dir(
+        scratch,
+        split_mode="union",
+        resolution=1.0,
+        min_k_gene=1,
+        max_k_gene=10,
+        persist_edges=True,
+    )
+
+    df = pd.read_csv(out["gene_modules"], sep="\t")
+    assert df.shape[0] == 5  # union of gene IDs: G0..G4
+    assert set(df["gene_id"].tolist()) == {"G0", "G1", "G2", "G3", "G4"}
+
+
 def test_run_gene_modules_for_cohort_writes_manifest(tmp_path):
     import sc_robust.gene_modules as gm
 
