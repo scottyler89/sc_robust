@@ -281,3 +281,261 @@ Differential Expression Updates
 -------------------------------
 - The differential-expression helpers automatically merge the packaged `ensg_annotations_abbreviated.txt` lookup so downstream tables always surface `gene_id` and `gene_name` columns, even when the caller does not supply annotations.
 - Pathway enrichment now hashes gene memberships and, when `n_jobs != 1`, uses a process-backed executor by default to sidestep the Python GIL. Environments that block process creation will emit a warning and transparently fall back to threaded execution; you can also force threading with `backend="thread"`.
+
+Pathway Analysis Only (Tutorial)
+--------------------------------
+
+If you already have differential-expression results from another workflow and only
+want to run pathway analysis in `sc_robust`, use the low-level pathway helpers
+directly. You do not need to build a `robust(...)` object or run the full
+`perform_de_workflow(...)` pipeline for this use case.
+
+Imports
+
+```python
+from pathlib import Path
+
+import pandas as pd
+
+from sc_robust.de import (
+    load_pathway_library,
+    run_pathway_enrichment,
+    run_pathway_enrichment_for_clusters,
+)
+```
+
+What the pathway code expects
+
+- A DE table is a `pandas.DataFrame` with one row per gene.
+- You must provide a gene identifier column, a signed numeric score column, and a p-value column.
+- By default, the pathway helpers expect:
+  - `gene_name`: gene symbol used to match against the pathway library
+  - `stat`: signed gene-level statistic used to rank and orient genes
+  - `pvalue`: per-gene p-value
+- If you use a different column name, pass it explicitly with `gene_col=...`, `stat_col=...`, and `p_col=...`.
+- If you want the highlighted genes in `nom_sig_genes` to use a different significance threshold column such as `padj`, pass `significance_col="padj"`.
+- The chosen `stat_col` should be zero-centered and directional. Internally, pathway enrichment runs a one-sample t-test of the pathway's gene-level scores against `0.0`.
+
+Minimal single-contrast example
+
+```python
+de_df = pd.DataFrame(
+    {
+        "gene_name": ["IL7R", "LTB", "MALAT1", "NKG7", "CST3"],
+        "stat": [4.8, 3.1, 0.2, -2.7, -1.9],
+        "pvalue": [1e-5, 3e-4, 0.42, 8e-3, 1.6e-2],
+        "padj": [5e-5, 9e-4, 0.60, 1.2e-2, 2.5e-2],
+    }
+)
+
+hallmark = load_pathway_library("h.all")
+
+pathway_df = run_pathway_enrichment(
+    de_df,
+    hallmark,
+    gene_col="gene_name",
+    stat_col="stat",
+    p_col="pvalue",
+    significance_col="padj",
+    alpha=0.05,
+)
+
+print(pathway_df.head())
+```
+
+Expected output columns include:
+- `size`: number of genes in the reference pathway
+- `mean_t`: mean of the supplied gene-level statistic within the pathway
+- `enrichment_t`: one-sample t statistic for that pathway
+- `p`: pathway-level p-value from the one-sample t test
+- `BH_adj_p`: Benjamini-Hochberg adjusted pathway p-value
+- `signed_neglog10_BH`: signed summary score for ranking/plotting pathways
+- `nom_sig_genes`: comma-separated genes passing the requested significance filter in the same direction as the pathway effect
+
+Using a custom score column
+
+If your DE output uses another gene-level score, pass that column name as
+`stat_col`. For example, if your upstream workflow emits a moderated t statistic
+in `wald_score`:
+
+```python
+de_df = pd.DataFrame(
+    {
+        "gene_name": ["IL7R", "LTB", "MALAT1", "NKG7", "CST3"],
+        "wald_score": [4.8, 3.1, 0.2, -2.7, -1.9],
+        "pvalue": [1e-5, 3e-4, 0.42, 8e-3, 1.6e-2],
+        "padj": [5e-5, 9e-4, 0.60, 1.2e-2, 2.5e-2],
+    }
+)
+
+pathway_df = run_pathway_enrichment(
+    de_df,
+    hallmark,
+    gene_col="gene_name",
+    stat_col="wald_score",
+    p_col="pvalue",
+    significance_col="padj",
+)
+```
+
+Multiple contrasts with one shared score-column name
+
+`run_pathway_enrichment_for_clusters(...)` accepts a mapping of contrast name to
+DE table. This is the right entry point when every contrast table uses the same
+schema.
+
+```python
+de_by_contrast = {
+    "cluster_prop__1": pd.DataFrame(
+        {
+            "gene_name": ["IL7R", "LTB", "MALAT1", "NKG7", "CST3"],
+            "pathway_score": [4.8, 3.1, 0.2, -2.7, -1.9],
+            "pvalue": [1e-5, 3e-4, 0.42, 8e-3, 1.6e-2],
+            "padj": [5e-5, 9e-4, 0.60, 1.2e-2, 2.5e-2],
+        }
+    ),
+    "cluster_prop__2": pd.DataFrame(
+        {
+            "gene_name": ["IL7R", "LTB", "MALAT1", "NKG7", "CST3"],
+            "pathway_score": [-3.9, -2.4, 0.1, 3.3, 2.2],
+            "pvalue": [2e-4, 5e-3, 0.70, 7e-4, 1.1e-2],
+            "padj": [6e-4, 9e-3, 0.82, 2e-3, 1.8e-2],
+        }
+    ),
+}
+
+pathway_res = run_pathway_enrichment_for_clusters(
+    de_by_contrast,
+    libraries=["h.all", "c2.all"],
+    stat_col="pathway_score",
+    gene_col="gene_name",
+    p_col="pvalue",
+    significance_col="padj",
+    alpha=0.05,
+    n_jobs=4,
+)
+
+cluster1_pathways = pathway_res.per_contrast["cluster_prop__1"]
+all_pathways = pathway_res.tidy()
+print(cluster1_pathways.head())
+print(all_pathways.head())
+```
+
+Multiple contrasts with different score-column names
+
+This is the main current limitation: `run_pathway_enrichment_for_clusters(...)`
+accepts one `stat_col` per call, not a different score-column name for each
+contrast. If contrast A uses `t_cell_score` and contrast B uses `my_wald`, you
+must normalize the inputs before calling the helper.
+
+Here is an explicit example of a per-contrast score-column map:
+
+```python
+raw_de_by_contrast = {
+    "cluster_prop__1": pd.DataFrame(
+        {
+            "gene_name": ["IL7R", "LTB", "MALAT1", "NKG7", "CST3"],
+            "t_cell_score": [4.8, 3.1, 0.2, -2.7, -1.9],
+            "pvalue": [1e-5, 3e-4, 0.42, 8e-3, 1.6e-2],
+            "padj": [5e-5, 9e-4, 0.60, 1.2e-2, 2.5e-2],
+        }
+    ),
+    "cluster_prop__2": pd.DataFrame(
+        {
+            "gene_name": ["IL7R", "LTB", "MALAT1", "NKG7", "CST3"],
+            "my_wald": [-3.9, -2.4, 0.1, 3.3, 2.2],
+            "pvalue": [2e-4, 5e-3, 0.70, 7e-4, 1.1e-2],
+            "padj": [6e-4, 9e-3, 0.82, 2e-3, 1.8e-2],
+        }
+    ),
+}
+
+score_column_by_contrast = {
+    "cluster_prop__1": "t_cell_score",
+    "cluster_prop__2": "my_wald",
+}
+```
+
+The two practical patterns are:
+
+1. Rename each contrast-specific score column to a common name before calling
+   `run_pathway_enrichment_for_clusters(...)`.
+
+```python
+prepared = {}
+for contrast, df in raw_de_by_contrast.items():
+    score_col = score_column_by_contrast[contrast]
+    prepared[contrast] = df.rename(columns={score_col: "pathway_score"}).copy()
+
+pathway_res = run_pathway_enrichment_for_clusters(
+    prepared,
+    libraries=["h.all"],
+    stat_col="pathway_score",
+    gene_col="gene_name",
+    p_col="pvalue",
+    significance_col="padj",
+)
+```
+
+2. Run the single-contrast helper in a loop and concatenate results yourself.
+
+```python
+per_contrast = {}
+for contrast, df in raw_de_by_contrast.items():
+    per_contrast[contrast] = run_pathway_enrichment(
+        df,
+        hallmark,
+        gene_col="gene_name",
+        stat_col=score_column_by_contrast[contrast],
+        p_col="pvalue",
+        significance_col="padj",
+    )
+```
+
+If you want a single long-form table after the per-contrast loop:
+
+```python
+combined_pathways = pd.concat(
+    [
+        df.assign(contrast=contrast)
+        for contrast, df in per_contrast.items()
+    ],
+    ignore_index=True,
+)
+```
+
+Pathway library formats
+
+- Packaged libraries can be referenced by filename or prefix, for example:
+  - `"h.all"`
+  - `"c2.all"`
+  - `"c5.all.v2025.1.Hs.symbols.gmt"`
+- You can also pass a GMT file from disk:
+
+```python
+custom_gmt = Path("refs/custom_pathways.gmt")
+
+pathway_res = run_pathway_enrichment_for_clusters(
+    de_by_contrast,
+    libraries=[str(custom_gmt)],
+    stat_col="pathway_score",
+    gene_col="gene_name",
+    p_col="pvalue",
+)
+```
+
+- GMT rows are expected to look like:
+
+```text
+PATHWAY_NAME<TAB>description<TAB>GENE1<TAB>GENE2<TAB>GENE3
+```
+
+The second GMT field is ignored by `sc_robust`; pathway membership comes from
+the remaining tab-delimited gene symbols.
+
+Notes for handoff
+
+- Prefer one row per gene in each DE table.
+- Make sure the gene identifier column matches the namespace used by the GMT file, typically HGNC-style symbols in `gene_name`.
+- If you already have external DE results, prefer `run_pathway_enrichment(...)` or `run_pathway_enrichment_for_clusters(...)` over `perform_de_workflow(...)`.
+- The current `perform_de_workflow(...)` helper hardcodes `stat_col="stat"`, so it is not the right interface for heterogeneous external score columns.
