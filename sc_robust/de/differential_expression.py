@@ -194,6 +194,18 @@ def fit_deseq_dataset(dds: "DeseqDataSet") -> "DeseqDataSet":
         diagnostics.update({"status": "failed", "error_type": type(exc).__name__, "error": str(exc)})
         dds._sc_robust_diagnostics = diagnostics
         raise DEFitError("DESeq2 fitting failed; inspect exc.diagnostics.", diagnostics) from exc
+    inference = getattr(dds, "inference", None)
+    fallback_records = []
+    for attribute in ("last_irls_diagnostics", "last_alpha_mle_diagnostics"):
+        records = getattr(inference, attribute, None) if inference is not None else None
+        if records:
+            fallback_records.extend(dict(record) for record in records)
+    diagnostics["fallbacks"] = fallback_records
+    diagnostics["fallback_count"] = len(fallback_records)
+    diagnostics["convergence"] = {
+        "genes": len(getattr(inference, "last_irls_diagnostics", ()) or ()) if inference is not None else 0,
+        "terminal_failures": 0,
+    }
     diagnostics.update({"status": "fit", "error": None})
     if hasattr(dds, "design_matrix"):
         matrix = dds.design_matrix

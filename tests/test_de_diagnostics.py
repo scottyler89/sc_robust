@@ -62,3 +62,26 @@ def test_fit_failure_raises_with_diagnostics(monkeypatch):
         assert exc.diagnostics["error_type"] == "ValueError"
     else:
         raise AssertionError("fit failure did not produce DEFitError")
+
+
+class _SuccessfulDDS:
+    refit_cooks = False
+    inference = type("Inference", (), {"last_irls_diagnostics": [{"irls_ridge_applied": True}], "last_alpha_mle_diagnostics": [{"cox_reid_ridge_retry": True}]})()
+    obsm = {}
+
+    def fit_size_factors(self): pass
+    def fit_genewise_dispersions(self): pass
+    def fit_dispersion_prior(self): pass
+    def fit_MAP_dispersions(self): pass
+    def fit_LFC(self): pass
+    def calculate_cooks(self): pass
+
+
+def test_fit_success_collects_fallback_records(monkeypatch):
+    from sc_robust.de import differential_expression as de
+
+    monkeypatch.setattr(de, "_import_pydeseq2", lambda: (None, None, None))
+    dds = _SuccessfulDDS()
+    de.fit_deseq_dataset(dds)
+    assert dds._sc_robust_diagnostics["fallback_count"] == 2
+    assert dds._sc_robust_diagnostics["fallbacks"][0]["irls_ridge_applied"]
