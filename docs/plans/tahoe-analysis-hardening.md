@@ -163,7 +163,7 @@ Status values are `not started`, `in progress`, `blocked`, `done`, or `deferred`
 
 | ID | Priority | Status | Depends on | Deliverable | Completion evidence |
 | --- | --- | --- | --- | --- | --- |
-| M0 | P0 | in progress | none | Provenance, SSoT, compatibility foundation | commit and M0 validation output |
+| M0 | P0 | done | none | Provenance, SSoT, compatibility foundation | commit and M0 validation output |
 | M1 | P0 | not started | none | Reviewed PyDESeq2 safeguards | immutable commit and numerical report |
 | M2 | P0 | not started | M0, M1 | Explicit DE design and diagnostics | commit and M2 validation output |
 | M3 | P1 | not started | M0 | Metadata-driven pseudobulk boundaries | commit and M3 validation output |
