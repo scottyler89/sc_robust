@@ -685,6 +685,7 @@ events and evidence; it does not redefine milestone status.
 | 2026-07-24 | M6 | Post-smoke release validation | `b48478a` | full suite: `104 passed, 24 warnings`; `python -m build` succeeded; remote CI URL and hardened fork pin remain open |
 | 2026-07-24 | M6 | Added actionable deprecation warnings for legacy DE aliases | `6b39890` | focused alias tests: `6 passed`; aliases now direct users to `design`, `annotation_columns`, and `pairs`; full validation follows |
 | 2026-07-24 | M6 | Post-alias release validation | `6b39890` | full suite: `105 passed, 24 warnings`; `python -m build` succeeded; remote CI URL and hardened fork pin remain open |
+| 2026-07-24 | M6 | Aligned README alias migration guidance with runtime warnings | `b6b9ba1` | handoff docs now identify deprecated aliases and replacements; dependency pin and remote CI gates remain open |
 
 Update protocol:
 
