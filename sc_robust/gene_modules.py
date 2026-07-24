@@ -12,6 +12,7 @@ import pandas as pd
 import scipy.sparse as sp
 
 from .provenance import canonical_json
+from .utils import leiden_provenance
 
 logger = logging.getLogger(__name__)
 
@@ -217,6 +218,7 @@ def run_gene_modules_for_cohort(
     split_mode: str = "union",
     chunk_rows: int = 512,
     resolution: float = 1.0,
+    random_state: int = None,
     k_gene: Optional[int] = None,
     min_k_gene: int = 10,
     max_k_gene: int = 200,
@@ -266,7 +268,7 @@ def run_gene_modules_for_cohort(
                 )
                 pos_for_leiden = pos_knn[["i", "j", weight_col]].rename(columns={weight_col: "rho"}).copy()
                 pos_for_leiden["sign"] = "pos"
-                labels = run_leiden_gene_modules(pos_for_leiden, n_genes=n_genes, resolution=resolution)
+                labels = run_leiden_gene_modules(pos_for_leiden, n_genes=n_genes, resolution=resolution, random_state=random_state)
                 pos_adj = edges_to_sparse_adjacency(pos_for_leiden, n_nodes=n_genes, symmetric=True).tocsr()
                 strength = np.asarray(pos_adj.sum(axis=1)).reshape(-1)
                 degree = np.asarray((pos_adj != 0).sum(axis=1)).reshape(-1)
@@ -296,6 +298,7 @@ def run_gene_modules_for_cohort(
                     "split_mode": split_mode,
                     "chunk_rows": int(chunk_rows),
                     "resolution": float(resolution),
+                    "leiden": leiden_provenance(random_state),
                     "persist_edges": True,
                     "reuse_existing_edges": True,
                     "k_gene": int(k_gene) if k_gene is not None else None,
@@ -325,6 +328,7 @@ def run_gene_modules_for_cohort(
                     split_mode=split_mode,
                     chunk_rows=chunk_rows,
                     resolution=resolution,
+                    random_state=random_state,
                     k_gene=k_gene,
                     min_k_gene=min_k_gene,
                     max_k_gene=max_k_gene,
@@ -489,13 +493,14 @@ def run_replicated_gene_modules_for_cohort(
     *,
     jaccard_min: float = 0.3,
     resolution: float = 1.0,
+    random_state: int = None,
 ) -> Dict[str, Path]:
     """Cluster per-sample positive modules into cohort-level replicated modules.
 
     Output is *annotated* with `support_n_samples` so sample-unique structure is preserved
     without splitting into separate reporting formats.
     """
-    from .utils import perform_leiden_clustering
+    from .utils import leiden_provenance, perform_leiden_clustering
 
     out_dir = Path(out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -542,7 +547,7 @@ def run_replicated_gene_modules_for_cohort(
         graph = edges_to_sparse_adjacency(
             edges.rename(columns={"jaccard": "rho"}), n_nodes=int(nodes.shape[0]), weight_col="rho"
         )
-        _, _, labels = perform_leiden_clustering(graph, resolution_parameter=float(resolution))
+        _, _, labels = perform_leiden_clustering(graph, resolution_parameter=float(resolution), random_state=random_state)
         labels = np.asarray(labels, dtype=int)
 
     nodes = nodes.copy()
@@ -1332,12 +1337,13 @@ def run_leiden_gene_modules(
     *,
     n_genes: int,
     resolution: float = 1.0,
+    random_state: int = None,
 ) -> np.ndarray:
     """Run Leiden community detection on a positive-edge gene graph."""
-    from .utils import perform_leiden_clustering
+    from .utils import leiden_provenance, perform_leiden_clustering
 
     graph = edges_to_sparse_adjacency(positive_edges, n_nodes=n_genes, symmetric=True)
-    _, _, labels = perform_leiden_clustering(graph, resolution_parameter=float(resolution))
+    _, _, labels = perform_leiden_clustering(graph, resolution_parameter=float(resolution), random_state=random_state)
     return labels
 
 
@@ -1616,6 +1622,7 @@ def run_gene_modules_from_scratch_dir(
     split_mode: str = "union",
     chunk_rows: int = 512,
     resolution: float = 1.0,
+    random_state: int = None,
     k_gene: Optional[int] = None,
     min_k_gene: int = 10,
     max_k_gene: int = 200,
@@ -1695,7 +1702,7 @@ def run_gene_modules_from_scratch_dir(
     pos_for_leiden = pos_knn[["i", "j", weight_col]].rename(columns={weight_col: "rho"}).copy()
     pos_for_leiden["sign"] = "pos"
 
-    labels = run_leiden_gene_modules(pos_for_leiden, n_genes=len(gene_ids_union), resolution=resolution)
+    labels = run_leiden_gene_modules(pos_for_leiden, n_genes=len(gene_ids_union), resolution=resolution, random_state=random_state)
 
     pos_adj = edges_to_sparse_adjacency(pos_for_leiden, n_nodes=len(gene_ids_union), symmetric=True).tocsr()
     strength = np.asarray(pos_adj.sum(axis=1)).reshape(-1)
@@ -1752,6 +1759,7 @@ def run_gene_modules_from_scratch_dir(
     params = {
         "split_mode": split_mode,
         "chunk_rows": int(chunk_rows),
+        "leiden": leiden_provenance(random_state),
         "resolution": float(resolution),
         "persist_edges": bool(persist_edges),
     }
