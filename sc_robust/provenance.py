@@ -365,7 +365,7 @@ def _identity_payload(
 
 
 @dataclass(frozen=True)
-class ProvenanceEnvelope:
+class ProvenanceEnvelope(Mapping[str, Any]):
     """Immutable, versioned provenance for one analysis stage."""
 
     stage: str
@@ -411,6 +411,24 @@ class ProvenanceEnvelope:
                 f"Provenance stable_id mismatch: expected {expected_id!r}, "
                 f"observed {self.stable_id!r}."
             )
+
+    def __getitem__(self, key: str) -> Any:
+        record = self.to_dict()
+        if key in record:
+            return record[key]
+        if key == "deps":
+            return record["environment"]
+        if key == "adata":
+            return record["inputs"].get("adata", {})
+        if key in self.diagnostics:
+            return self.diagnostics[key]
+        raise KeyError(key)
+
+    def __iter__(self):
+        return iter(self.to_dict())
+
+    def __len__(self) -> int:
+        return len(self.to_dict())
 
     @classmethod
     def create(
