@@ -166,7 +166,7 @@ Status values are `not started`, `in progress`, `blocked`, `done`, or `deferred`
 | M0 | P0 | done | none | Provenance, SSoT, compatibility foundation | commit and M0 validation output |
 | M1 | P0 | in progress | none | Reviewed PyDESeq2 safeguards | immutable commit and numerical report |
 | M2 | P0 | in progress | M0, M1 | Explicit DE design and diagnostics | commit and M2 validation output |
-| M3 | P1 | not started | M0 | Metadata-driven pseudobulk boundaries | commit and M3 validation output |
+| M3 | P1 | in progress | M0 | Metadata-driven pseudobulk boundaries | commit and M3 validation output |
 | M4 | P1 | not started | M0 | Validated count-split adapter | commit and M4 validation output |
 | M5 | P1 | not started | M0 | Deterministic Leiden propagation | commit and M5 validation output |
 | M6 | P0 release gate | not started | M0-M5 | Integrated API, docs, CI, and compatibility review | release-candidate commit and CI URL |
@@ -652,7 +652,8 @@ events and evidence; it does not redefine milestone status.
 | 2026-07-24 | M2 | Added canonical formula DesignSpec, annotation-only metadata, `pairs` alias, safe worker defaults, and result design records | `ac3ae75` | `tests/test_de_design.py`: `3 passed`; full suite: `87 passed, 15 warnings`; M2 remains open for complete fit/contrast diagnostics |
 | 2026-07-24 | M2 | Added structured fit status, terminal errors, and design-matrix rank/non-finite diagnostics | `9221856` | full suite: `87 passed, 15 warnings`; per-contrast records and acceptance fixtures remain |
 | 2026-07-24 | M2 | Added stable per-contrast IDs, vectors, direction, labels, and non-finite result counts | `191c731` | full suite: `87 passed, 15 warnings`; dedicated diagnostic fixtures remain |
-| 2026-07-24 | M2 | Added public `DEFitError` with JSON-safe terminal diagnostics and failure fixture | pending | focused design/diagnostic tests: `5 passed`; full suite: `89 passed, 15 warnings`; filtering/rank/fallback acceptance coverage remains |
+| 2026-07-24 | M2 | Added public `DEFitError` with JSON-safe terminal diagnostics and failure fixture | `ec6896f` | focused design/diagnostic tests: `5 passed`; full suite: `89 passed, 15 warnings`; filtering/rank/fallback acceptance coverage remains |
+| 2026-07-24 | M3 | Started metadata-driven pseudobulk boundary implementation after M0 dependency gate | pending | reuse METIS builder per exact joint boundary and preserve source-cell provenance |
 
 Update protocol:
 
