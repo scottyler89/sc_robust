@@ -169,7 +169,7 @@ Status values are `not started`, `in progress`, `blocked`, `done`, or `deferred`
 | M3 | P1 | in progress | M0 | Metadata-driven pseudobulk boundaries | commit and M3 validation output |
 | M4 | P1 | in progress | M0 | Validated count-split adapter | commit and M4 validation output |
 | M5 | P1 | in progress | M0 | Deterministic Leiden propagation | commit and M5 validation output |
-| M6 | P0 release gate | not started | M0-M5 | Integrated API, docs, CI, and compatibility review | release-candidate commit and CI URL |
+| M6 | P0 release gate | in progress | M0-M5 | Integrated API, docs, CI, and compatibility review | release-candidate commit and CI URL |
 | D1 | P2 | deferred | M6 and Tahoe pilot | Streaming-friendly QC proposal | approved follow-up plan |
 
 Execution follows dependency order first and priority second. M0 and M1 may run
@@ -659,6 +659,7 @@ events and evidence; it does not redefine milestone status.
 | 2026-07-24 | M4 | Added preflight validation, exact dense/sparse conservation, seed-failure policy, and shared `do_splits` integration | `a9804b7` | adapter/pipeline tests: `8 passed`; full suite: `94 passed, 22 warnings` |
 | 2026-07-24 | M5 | Started canonical seeded-Leiden implementation after M0 dependency gate | `b26c750` | random_state/seed alias, graph wrapper, and gene-module propagation |
 | 2026-07-24 | M5 | Added deterministic Leiden seed alias, workflow propagation, and dependency-version provenance | `c6d09f3` | focused seed/graph/gene-module tests: `12 passed`; full suite: `96 passed, 22 warnings` |
+| 2026-07-24 | M6 | Started release integration audit after M0-M5 implementation increments | pending | public exports, docs, build/CI, dependency pins, and source compatibility remain to audit |
 
 Update protocol:
 
