@@ -164,7 +164,7 @@ Status values are `not started`, `in progress`, `blocked`, `done`, or `deferred`
 | ID | Priority | Status | Depends on | Deliverable | Completion evidence |
 | --- | --- | --- | --- | --- | --- |
 | M0 | P0 | done | none | Provenance, SSoT, compatibility foundation | commit and M0 validation output |
-| M1 | P0 | not started | none | Reviewed PyDESeq2 safeguards | immutable commit and numerical report |
+| M1 | P0 | in progress | none | Reviewed PyDESeq2 safeguards | immutable commit and numerical report |
 | M2 | P0 | not started | M0, M1 | Explicit DE design and diagnostics | commit and M2 validation output |
 | M3 | P1 | not started | M0 | Metadata-driven pseudobulk boundaries | commit and M3 validation output |
 | M4 | P1 | not started | M0 | Validated count-split adapter | commit and M4 validation output |
@@ -644,6 +644,7 @@ events and evidence; it does not redefine milestone status.
 | 2026-07-24 | M0 | Integrated immutable provenance envelopes and deterministic exports into pseudobulk, DE, and pathway result APIs | `44f549b` | `3 passed` focused; existing pathway/provenance tests `35 passed` |
 | 2026-07-24 | M0 | Canonicalized robust provenance, ordered AnnData axis hashes, lossless manifests, and immutable post-run diagnostics | `2b5f1c3` | `31 passed` focused; `84 passed` full suite |
 | 2026-07-24 | M0 | Canonicalized gene-module report serialization and closed M0 acceptance criteria | `ba33452` | exact M0 validation `45 passed`; gene/robust tests `15 passed`; full suite `84 passed` |
+| 2026-07-24 | M1 | Started PyDESeq2 fallback audit from clean base `5196ce1`; dirty sibling retained as reference | pending | clean sibling worktree creation next |
 
 Update protocol:
 
