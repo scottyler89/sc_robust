@@ -1,0 +1,69 @@
+import pandas as pd
+import pytest
+
+from sc_robust.de.base import DEAnalysisResult, PathwayEnrichmentResult, PseudobulkResult
+
+
+def test_all_stage_results_export_one_immutable_provenance_shape():
+    pb = PseudobulkResult(
+        counts=pd.DataFrame([[1, 2]], index=["cell-1"], columns=["gene-1", "gene-2"]),
+        metadata=pd.DataFrame({"sample": ["sample-1"]}, index=["cell-1"]),
+        parameters={"mode": "within_cluster"},
+    )
+    de = DEAnalysisResult(
+        dds=None,
+        contrast_results={"A_vs_B": pd.DataFrame()},
+        parameters={"alpha": 0.05},
+        design_columns=["cluster_A", "cluster_B"],
+    )
+    pathway = PathwayEnrichmentResult(
+        per_contrast={"A_vs_B": pd.DataFrame()},
+        libraries=["c2.all.v2025.1.Hs.symbols.gmt"],
+        parameters={"stat_col": "custom_t"},
+    )
+
+    assert [item.provenance.stage for item in (pb, de, pathway)] == [
+        "pseudobulk",
+        "de",
+        "pathway",
+    ]
+    for result in (pb, de, pathway):
+        exported = result.export_provenance()
+        assert exported["schema_version"] == "1"
+        assert result.provenance_json() == result.provenance_json()
+        assert result.parameters == exported["algorithm"]
+
+    assert pb.provenance.inputs["cell_axis"]["ordering"] == "ordered"
+    assert de.provenance.inputs["contrast_ids"]["ordering"] == "ordered"
+    assert pathway.provenance.inputs["libraries"]["ordering"] == "ordered"
+
+
+def test_result_parameters_and_provenance_are_immutable():
+    result = DEAnalysisResult(
+        dds=None,
+        contrast_results={"A": pd.DataFrame()},
+        parameters={"alpha": 0.05},
+    )
+
+    with pytest.raises(TypeError):
+        result.parameters["alpha"] = 0.1
+    with pytest.raises(AttributeError):
+        result.parameters = {"alpha": 0.1}
+    with pytest.raises(AttributeError):
+        result.provenance = None
+
+
+def test_result_rejects_two_different_configuration_sources():
+    envelope = DEAnalysisResult(
+        dds=None,
+        contrast_results={"A": pd.DataFrame()},
+        parameters={"alpha": 0.05},
+    ).provenance
+
+    with pytest.raises(ValueError, match="one canonical configuration"):
+        DEAnalysisResult(
+            dds=None,
+            contrast_results={"A": pd.DataFrame()},
+            parameters={"alpha": 0.1},
+            provenance=envelope,
+        )
