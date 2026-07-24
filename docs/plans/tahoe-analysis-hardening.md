@@ -671,7 +671,7 @@ events and evidence; it does not redefine milestone status.
 | 2026-07-24 | M6 | Started release integration audit after M0-M5 implementation increments | `8a40926` | public exports, docs, build/CI, dependency pins, and source compatibility remain to audit |
 | 2026-07-24 | M6 | Added public root exports, handoff tutorials, and CI package-build validation | `1febfc2` | root import smoke passed; full suite: `96 passed, 22 warnings`; `python -m build` produced sdist and wheel; release pin/acceptance gates remain |
 | 2026-07-24 | M6 | Corrected README imports and completed M3 provenance metadata fields | `a24bc95` | final full suite: `96 passed, 22 warnings`; final `python -m build` succeeded; release pin/acceptance gates remain |
-| 2026-07-24 | M6 | Final release validation after M3-M5 closure | pending | full suite: `99 passed, 24 warnings`; `python -m build` succeeded; M1/M2 acceptance and immutable pin gates remain |
+| 2026-07-24 | M6 | Final release validation after M3-M5 closure | `c1b2506` | full suite: `99 passed, 24 warnings`; `python -m build` succeeded; M1/M2 acceptance and immutable pin gates remain |
 
 Update protocol:
 
