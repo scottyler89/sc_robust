@@ -166,9 +166,9 @@ Status values are `not started`, `in progress`, `blocked`, `done`, or `deferred`
 | M0 | P0 | done | none | Provenance, SSoT, compatibility foundation | commit and M0 validation output |
 | M1 | P0 | in progress | none | Reviewed PyDESeq2 safeguards | immutable commit and numerical report |
 | M2 | P0 | in progress | M0, M1 | Explicit DE design and diagnostics | commit and M2 validation output |
-| M3 | P1 | in progress | M0 | Metadata-driven pseudobulk boundaries | commit and M3 validation output |
-| M4 | P1 | in progress | M0 | Validated count-split adapter | commit and M4 validation output |
-| M5 | P1 | in progress | M0 | Deterministic Leiden propagation | commit and M5 validation output |
+| M3 | P1 | done | M0 | Metadata-driven pseudobulk boundaries | commit and M3 validation output |
+| M4 | P1 | done | M0 | Validated count-split adapter | commit and M4 validation output |
+| M5 | P1 | done | M0 | Deterministic Leiden propagation | commit and M5 validation output |
 | M6 | P0 release gate | in progress | M0-M5 | Integrated API, docs, CI, and compatibility review | release-candidate commit and CI URL |
 | D1 | P2 | deferred | M6 and Tahoe pilot | Streaming-friendly QC proposal | approved follow-up plan |
 
@@ -459,16 +459,16 @@ pilot demonstrates that independent per-well graph partitioning is unsuitable.
 
 #### Acceptance criteria
 
-- [ ] Existing topology and `within_cluster` calls remain backward compatible.
-- [ ] `partition_by` accepts one or multiple metadata factor names and no output
+- [x] Existing topology and `within_cluster` calls remain backward compatible.
+- [x] `partition_by` accepts one or multiple metadata factor names and no output
   crosses any exact joint key.
-- [ ] Every eligible input cell is assigned exactly once and retains its
+- [x] Every eligible input cell is assigned exactly once and retains its
   canonical initial AnnData observation ID in source provenance.
-- [ ] Inexact METIS target sizes preserve cells and emit one compact warning
+- [x] Inexact METIS target sizes preserve cells and emit one compact warning
   containing the factor key, requested target, and observed size range.
-- [ ] Metadata records source count/hash, factor names/values, mode, seed, ID
+- [x] Metadata records source count/hash, factor names/values, mode, seed, ID
   source, and whether full source lists were retained.
-- [ ] Sparse counts and categorical, string, and integer factors are covered.
+- [x] Sparse counts and categorical, string, and integer factors are covered.
 
 #### Validation
 
@@ -503,13 +503,13 @@ Tahoe adapter responsibility and is not claimed by `sc_robust`.
 
 #### Acceptance criteria
 
-- [ ] Dense and sparse fixtures conserve every element exactly.
-- [ ] Negative, non-integral, non-finite, malformed, and invalid-proportion
+- [x] Dense and sparse fixtures conserve every element exactly.
+- [x] Negative, non-integral, non-finite, malformed, and invalid-proportion
   inputs fail before `multi_split` can coerce them.
-- [ ] Same seed plus the same ordered cells x genes matrix repeats exactly.
-- [ ] A failed numba seed bridge cannot pass silently when determinism is
+- [x] Same seed plus the same ordered cells x genes matrix repeats exactly.
+- [x] A failed numba seed bridge cannot pass silently when determinism is
   requested.
-- [ ] The adapter delegates to `multi_split`, states both orientations, and
+- [x] The adapter delegates to `multi_split`, states both orientations, and
   documents fixed-order reproducibility versus order invariance.
 
 #### Validation
@@ -538,13 +538,13 @@ and monkeypatches can be removed in a separate LUAD commit.
 
 #### Acceptance criteria
 
-- [ ] Same graph, resolution, dependency versions, and seed produce identical
+- [x] Same graph, resolution, dependency versions, and seed produce identical
   labels and preserve the existing return contract.
-- [ ] `random_state` is canonical and any `seed` alias is deterministic and
+- [x] `random_state` is canonical and any `seed` alias is deterministic and
   conflict-checked.
-- [ ] Graph and gene-module workflows propagate and record the resolved seed
+- [x] Graph and gene-module workflows propagate and record the resolved seed
   plus Leiden/igraph versions.
-- [ ] LUAD's local seeded helper call patterns have a source-compatible package
+- [x] LUAD's local seeded helper call patterns have a source-compatible package
   replacement; no LUAD dataset execution is required.
 
 #### Validation
@@ -663,8 +663,10 @@ events and evidence; it does not redefine milestone status.
 | 2026-07-24 | M4 | Started validated count-split adapter implementation | `4677292` | cells x genes public contract, conservation, deterministic seed policy, and shared robust path |
 | 2026-07-24 | M4 | Added preflight validation, exact dense/sparse conservation, seed-failure policy, and shared `do_splits` integration | `a9804b7` | adapter/pipeline tests: `8 passed`; full suite: `94 passed, 22 warnings` |
 | 2026-07-24 | M4 | Added explicit negative-count and seed-bridge failure fixtures | `35e8c61` | adapter tests: `4 passed`; deterministic, dense/sparse, malformed, and validation paths covered |
+| 2026-07-24 | M4 | Closed M4 acceptance criteria after adapter/pipeline validation | pending | all M4 checkboxes checked; full release gate remains open |
 | 2026-07-24 | M5 | Started canonical seeded-Leiden implementation after M0 dependency gate | `b26c750` | random_state/seed alias, graph wrapper, and gene-module propagation |
 | 2026-07-24 | M5 | Added deterministic Leiden seed alias, workflow propagation, and dependency-version provenance | `c6d09f3` | focused seed/graph/gene-module tests: `12 passed`; full suite: `96 passed, 22 warnings` |
+| 2026-07-24 | M5 | Closed M5 acceptance criteria after seeded graph and LUAD source-pattern audit | pending | all M5 checkboxes checked; no LUAD data execution performed |
 | 2026-07-24 | M6 | Started release integration audit after M0-M5 implementation increments | `8a40926` | public exports, docs, build/CI, dependency pins, and source compatibility remain to audit |
 | 2026-07-24 | M6 | Added public root exports, handoff tutorials, and CI package-build validation | `1febfc2` | root import smoke passed; full suite: `96 passed, 22 warnings`; `python -m build` produced sdist and wheel; release pin/acceptance gates remain |
 | 2026-07-24 | M6 | Corrected README imports and completed M3 provenance metadata fields | `a24bc95` | final full suite: `96 passed, 22 warnings`; final `python -m build` succeeded; release pin/acceptance gates remain |
