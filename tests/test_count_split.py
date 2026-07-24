@@ -22,6 +22,8 @@ def test_invalid_counts_and_proportions_fail_before_delegation():
         split_counts(np.array([[np.nan, 0.0]]), [1.0])
     with pytest.raises(CountSplitValidationError, match="sum to one"):
         split_counts(np.ones((2, 2), dtype=int), [0.3, 0.3])
+    with pytest.raises(CountSplitValidationError, match="two-dimensional"):
+        split_counts(np.ones(4, dtype=int), [1.0])
 
 
 def test_same_seed_and_order_repeats():
