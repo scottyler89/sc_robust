@@ -351,12 +351,12 @@ implementation is reviewed and recorded as a new formalization of inline code.
 
 #### Acceptance criteria
 
-- [ ] A sparse IRLS fixture exercises and reports the committed `1e-6` ridge.
-- [ ] A singular Cox-Reid dispersion fixture triggers exactly one `1e-6 * I`
+- [x] A sparse IRLS fixture exercises and reports the committed `1e-6` ridge.
+- [x] A singular Cox-Reid dispersion fixture triggers exactly one `1e-6 * I`
   retry and records the affected gene.
-- [ ] Ordinary-fit coefficients, standard errors, dispersions, Cook's distances,
+- [x] Ordinary-fit coefficients, standard errors, dispersions, Cook's distances,
   and null behavior remain within approved tolerances.
-- [ ] Fallback, convergence, and terminal failure are machine-readable and are
+- [x] Fallback, convergence, and terminal failure are machine-readable and are
   not available only through stdout.
 - [ ] A reviewed immutable commit is pinned; production imports no dirty sibling.
 
@@ -648,6 +648,7 @@ events and evidence; it does not redefine milestone status.
 | 2026-07-24 | M1 | Added committed IRLS and Cox-Reid fallback diagnostics in clean PyDESeq2 worktree | `8d1c39f` (`5196ce1` base) | focused `3 passed`; singular retry smoke passed; stock/hardened ordinary utility outputs byte-identical; PyDESeq2 suite collection initially blocked by missing test dependencies |
 | 2026-07-24 | M1 | Revalidated clean PyDESeq2 against isolated compatible dependencies | `8d1c39f` | `tests/test_pydeseq2.py`: `38 passed`; `tests/test_edge_cases.py`: `19 passed in 31.69s`; focused fallback tests: `3 passed`; no shared environment changes |
 | 2026-07-24 | M1 | Reproduced byte-identical ordinary-fit numerical comparison | `0700d48` | stock `5196ce1c` and hardened `8d1c39f` produced identical beta, mu, H, alpha, and convergence JSON; pin gate remains |
+| 2026-07-24 | M1 | Closed numerical, fallback, and machine-readable diagnostic acceptance criteria | `fa162e5` | first four M1 checkboxes checked; immutable production pin remains the sole open M1 gate |
 | 2026-07-24 | M1 | Pinning gate audited | pending | package metadata still has unversioned `pydeseq2`; clean fallback commit `8d1c39f` is local and not yet a resolvable published/fork pin, so M1 remains in progress |
 | 2026-07-24 | M1 | Added PyDESeq2 fallback decision record with exact commits, epsilon policy, and release-pin blocker | `84760ef` | `docs/decisions/001-pydeseq2-fallbacks.md`; immutable publication/approval remains required |
 | 2026-07-24 | M2 | Started explicit DE design and diagnostics implementation after M0/M1 dependency audit | pending | preserve shorthand and add focused design/diagnostic tests |
