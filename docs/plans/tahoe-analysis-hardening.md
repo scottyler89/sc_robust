@@ -639,6 +639,7 @@ events and evidence; it does not redefine milestone status.
 | 2026-07-24 | PLAN | Initial audit, requester decisions, and baseline | `634bc8c`, `9c2165c`, `570b887`, `5f4e233` | baseline `38 passed`; staged diff checks passed |
 | 2026-07-24 | PLAN | Dependency tracker and provenance/SSoT audit | `dedf910` | diff, heading-spacing, and code-fence checks passed |
 | 2026-07-24 | M0 | Started provenance, SSoT, and compatibility foundation | pending | clean `feature/tahoe-hardening` worktree |
+| 2026-07-24 | M0 | Added canonical JSON, hash semantics, stable IDs, and immutable provenance envelopes | `a8fcaea` | `23 passed` focused; `61 passed` full suite |
 
 Update protocol:
 
