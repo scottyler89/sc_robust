@@ -6,7 +6,7 @@ import logging
 from contextlib import contextmanager, redirect_stdout, redirect_stderr
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Union
-from count_split.count_split import multi_split
+from .count_split_adapter import split_counts
 from anticor_features.anticor_features import get_anti_cor_genes
 import numpy as np
 import os
@@ -567,27 +567,20 @@ class robust(object):
             self.count_split_quiet,
         )
         with _maybe_silence_stdout(self.count_split_quiet):
-            if len(self.splits)==3:
-                self.train, self.val, self.test = multi_split(
-                    self.original_ad.X.T,
-                    percent_vect=self.splits,
+            if len(self.splits) == 3:
+                self.train, self.val, self.test = split_counts(
+                    self.original_ad.X, self.splits, seed=self.seed,
                     bin_size=self.count_split_bin_size,
                 )
-            elif len(self.splits)==2:
-                # count_split expects samples in columns (cells) and variables in rows (genes).
-                # AnnData stores X as cells×genes, so we pass X.T here for consistency with 3-way splits.
-                self.train, self.val = multi_split(
-                    self.original_ad.X.T,
-                    percent_vect=self.splits,
+            elif len(self.splits) == 2:
+                self.train, self.val = split_counts(
+                    self.original_ad.X, self.splits, seed=self.seed,
                     bin_size=self.count_split_bin_size,
                 )
                 self.test = copy(self.val)
             else:
                 raise AssertionError("Number of splits must be 2 or 3.")
-        # The count splitting assumes samples (cells) are in columns, but convention has flipped now
-        self.train = self.train.T
-        self.val = self.val.T
-        self.test = self.test.T
+        # split_counts already returns cells x genes.
         logger.info(
             "count_split_done train_shape=%s val_shape=%s test_shape=%s",
             tuple(getattr(self.train, "shape", ())),
