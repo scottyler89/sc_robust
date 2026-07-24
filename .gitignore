@@ -161,3 +161,4 @@ cython_debug/
 
 # Git worktrees (kept local and out of version control)
 .worktrees/
+.tmp/
