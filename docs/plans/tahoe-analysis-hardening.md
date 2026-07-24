@@ -118,15 +118,16 @@ is provided for naturally tabular findings and per-contrast diagnostics.
 Fitted PyDESeq2 objects may remain attached for interactive work, but a batch
 runner must not need to pickle or inspect them to audit a result.
 
-## Clarified Decisions and Remaining Guidance
+## Clarified Decisions
 
 The requester clarified:
 
 - The PyDESeq2 behavior is inline software logic, not a serialized fit
-  artifact. Audit the local repository history and current implementation. The
-  intended fallback is a narrow epsilon safeguard at the unstable numerical
-  operation, preventing denominator or matrix-inversion explosion for poor
-  fits rather than introducing a new general regularized estimator.
+  artifact. Audit the local repository history and current implementation.
+  Approved behavior includes both safeguards: the committed IRLS `1e-6`
+  diagonal ridge and the Cox-Reid dispersion retry with `1e-6 * I` after a
+  singular Fisher-information inversion. Both remain narrow numerical
+  protections for poor fits rather than a new general regularized estimator.
 - Pseudobulk boundaries are user-selectable metadata factors, supporting keys
   such as sample, cluster, or the exact joint sample-and-cluster key. Those
   factors must remain identifiable in output metadata and DE provenance.
@@ -142,20 +143,15 @@ The requester clarified:
 - LUAD is a code template, not a dataset re-analysis target. No LUAD data
   fixture, expected-result recreation, or re-analysis smoke run is required.
 
-Three guidance points remain:
-
-1. The package needs an explicit policy for undersized pseudobulk boundary
-   groups. The proposed default is an actionable error, with an explicit
-   `undersized="drop"` option; combining groups across a boundary is forbidden.
-2. Confirm the initial Tahoe formula and condition encoding. The proposed
-   default is `~ 0 + condition`, with drug-dose labels as numerators and the
-   same-plate DMSO label as denominator; Tahoe orchestration remains
-   responsible for eligible pair selection.
-3. Committed PyDESeq2 history contains the existing IRLS `1e-6` ridge at
-   `780b48ec`. Only the dispersion retry is confined to working-tree changes.
-   Confirm whether the request refers to the existing IRLS safeguard, the
-   uncommitted dispersion retry, or both; the current plan treats the dispersion
-   retry as the behavior that still needs formalization.
+- `cells_per_pb` is an advisory METIS target, not a drop threshold. METIS may
+  produce larger groups when exact target sizes are unavailable. Preserve every
+  cell, never merge across a declared boundary, and emit a compact size warning
+  with the boundary key and observed range instead of dropping or failing.
+- Tahoe's final formula and condition encoding are deferred until data ingest
+  stabilizes. Package design tests use a generic one-factor condition fixture
+  without asserting Tahoe-specific scientific policy.
+- Both the existing IRLS epsilon and the uncommitted dispersion retry are in
+  scope for validation, diagnostics, and immutable versioning.
 
 ## Workstreams
 
@@ -167,12 +163,12 @@ API changes.
 Audit finding: `sc_robust.fit_deseq_dataset` reaches PyDESeq2 dispersion fitting
 through `fit_genewise_dispersions()` and `fit_MAP_dispersions()`, and reaches
 IRLS through initial mean estimation and `fit_LFC()`. Committed PyDESeq2 IRLS
-already adds a `1e-6` diagonal ridge (`780b48ec`, 2023-01-09). The uncommitted
-IRLS wrapper duplicates that protection incompletely and is not part of the
-candidate fix. The novel working-tree behavior is in the Cox-Reid dispersion
-gradient: after a singular Fisher-information inversion, it retries with
-`1e-6 * I`. Validate and formalize that narrow dispersion fallback first; add
-another fallback only if a separate failing fixture demonstrates the need.
+already adds a `1e-6` diagonal ridge (`780b48ec`, 2023-01-09). This committed
+safeguard is approved and must remain covered. The uncommitted IRLS wrapper
+duplicates that protection incompletely and will not be adopted. The approved
+novel behavior is in the Cox-Reid dispersion gradient: after a singular
+Fisher-information inversion, retry with `1e-6 * I`. Both safeguards require
+focused regression coverage and machine-readable diagnostics.
 
 1. Trace the fallback through the complete local PyDESeq2 history, all refs,
    repository metadata, and the current inline changes. Record the exact base
@@ -180,10 +176,10 @@ another fallback only if a separate failing fixture demonstrates the need.
 2. Isolate the intended safeguard from incomplete experimental changes. The
    current working tree has an unresolved `la` reference and passes an
    unsupported `ridge_penalty` argument, so it cannot be pinned as-is.
-3. Implement the narrow epsilon stabilization at the unstable numerical
-   operation, preserving stock behavior for well-conditioned fits rather than
-   introducing a general regularized estimator. Name and document the fixed or
-   configurable epsilon and report each activation.
+3. Preserve and test the committed IRLS `1e-6` ridge, then formalize the
+   dispersion retry with `1e-6 * I` at the singular Fisher-information inverse.
+   Preserve stock behavior for well-conditioned fits, avoid a general
+   regularized estimator, and report each safeguard activation separately.
 4. Reproduce ordinary fits and all observed sparse/singular failure sites in a
    clean environment. Preserve the failing fixtures before changing code.
 5. Emit per-gene convergence, fallback activation, and terminal failure as
@@ -279,7 +275,8 @@ When a boundary is supplied:
 3. Form exact joint keys for multiple factors in stable input order.
 4. Run the existing topology or within-cluster builder independently per
    group; do not fork a second aggregation algorithm.
-5. Apply the declared undersized-group policy without merging across keys.
+5. Preserve every cell; treat `cells_per_pb` as advisory and warn with the
+   boundary key and observed size range when METIS cannot meet it exactly.
 6. Remap local source positions and generate IDs from factor keys plus a local
    pseudobulk ordinal.
 7. Hard-fail if any output contains more than one value for any boundary factor.
