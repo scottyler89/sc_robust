@@ -575,11 +575,11 @@ Deliverables:
 #### Acceptance criteria
 
 - [ ] Every M0-M5 acceptance checkbox is complete with linked evidence.
-- [ ] Public examples use only exported APIs and reconstruct results from
+- [x] Public examples use only exported APIs and reconstruct results from
   serialized provenance.
-- [ ] Legacy aliases have tests and actionable deprecation messages.
+- [x] Legacy aliases have tests and actionable deprecation messages.
 - [ ] Core and DE CI jobs pass in clean environments with resolved versions.
-- [ ] No production path imports a dirty sibling or applies a runtime monkeypatch.
+- [x] No production path imports a dirty sibling or applies a runtime monkeypatch.
 
 #### Validation
 
@@ -690,6 +690,7 @@ events and evidence; it does not redefine milestone status.
 | 2026-07-24 | M6 | Covered pathway parent lineage in the synthetic public workflow | `f2f4fd1` | focused smoke: `1 passed`; pathway branch now asserts DE parent ID propagation |
 | 2026-07-24 | M6 | Post-pathway-lineage validation | `f2f4fd1` | full suite: `106 passed, 24 warnings`; hardened dependency pin and remote CI remain open |
 | 2026-07-24 | M6 | Aligned README alias migration guidance with runtime warnings | `b6b9ba1` | handoff docs now identify deprecated aliases and replacements; dependency pin and remote CI gates remain open |
+| 2026-07-24 | M6 | Reconciled locally proven M6 acceptance criteria | `e816c65` | public examples, alias migration, and no-sibling/no-runtime-patch source audit checked; M1 dependency and remote CI criteria remain open |
 
 Update protocol:
 
