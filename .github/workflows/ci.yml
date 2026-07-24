@@ -35,3 +35,25 @@ jobs:
           python -m pip install build
           python -m build
 
+
+  de:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install resolved DE environment
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements.txt -c constraints-de-ci.txt
+          python -m pip install -e . -c constraints-de-ci.txt
+
+      - name: Verify PyDESeq2 resolution
+        run: python -c 'import importlib.metadata as m; assert m.version("pydeseq2") == "0.5.0"'
+
+      - name: Run DE tests
+        run: python -m pytest -q tests/test_de_design.py tests/test_de_diagnostics.py tests/test_result_provenance.py
