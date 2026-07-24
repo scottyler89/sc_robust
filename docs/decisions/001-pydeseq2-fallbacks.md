@@ -29,3 +29,8 @@ metadata must be updated only after that immutable reference is published or
 approved, then CI and production-import checks must be rerun.
 
 
+## Ordinary-Fit Comparison
+Using the same ordered synthetic fixture (`counts=[3,4,5,6]`, unit size factors, intercept plus two-level condition design), stock `5196ce1c` and hardened `8d1c39f` produced byte-identical serialized beta, mu, H, alpha, and convergence output.
+```json
+{"H":[0.4999997571429704,0.4999997571429704,0.499999904545492,0.499999904545492],"alpha":1.761851670369137e-06,"alpha_converged":true,"beta":[1.2527627740208185,0.4519852319295172],"irls_converged":true,"mu":[3.499999319339143,3.499999319339143,5.499999525415528,5.499999525415528]}
+```
