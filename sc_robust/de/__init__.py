@@ -26,6 +26,7 @@ from .plots import (
 )
 from .workflow import perform_de_workflow
 from .differential_expression import (
+    DesignSpec,
     prepare_deseq_dataset,
     fit_deseq_dataset,
     run_cluster_vs_all,
@@ -51,6 +52,7 @@ __all__ = [
     "plot_pathway_density_difference",
     "pathway_scurve_plot",
     "perform_de_workflow",
+    "DesignSpec",
     "prepare_deseq_dataset",
     "fit_deseq_dataset",
     "run_cluster_vs_all",

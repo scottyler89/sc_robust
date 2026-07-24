@@ -121,6 +121,9 @@ class DEAnalysisResult(_ProvenanceResultMixin):
     parameters: Mapping[str, Any] = field(default_factory=dict)
     design_columns: Optional[Sequence[str]] = None
     artifacts: Optional[MutableMapping[str, Any]] = None
+    design: Optional[Mapping[str, Any]] = None
+    diagnostics: Optional[Mapping[str, Any]] = None
+    contrast_diagnostics: Optional[Mapping[str, Mapping[str, Any]]] = None
     provenance: Optional[ProvenanceEnvelope] = None
 
     def __post_init__(self) -> None:
@@ -129,6 +132,8 @@ class DEAnalysisResult(_ProvenanceResultMixin):
             inputs={
                 "contrast_ids": _ordered_axis_input(self.contrast_results.keys(), domain="de.contrast-axis"),
                 "design_columns": _ordered_axis_input(self.design_columns or (), domain="de.design-columns"),
+                "design": dict(self.design or {}),
+                "diagnostics": dict(self.diagnostics or {}),
             },
         )
 

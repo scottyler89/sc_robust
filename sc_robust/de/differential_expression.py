@@ -13,6 +13,7 @@ import pandas as pd
 import matplotlib.pyplot as plt
 
 from .base import DEAnalysisResult, PseudobulkResult, load_default_gene_annotations
+from .design import DesignSpec, build_design_frame, make_design_spec
 
 __all__ = [
     "prepare_deseq_dataset",
@@ -20,6 +21,7 @@ __all__ = [
     "run_cluster_vs_all",
     "run_pairwise_de",
     "run_all_pairwise_de",
+    "DesignSpec",
 ]
 
 
@@ -49,7 +51,7 @@ def _effective_n_jobs(n_jobs: Optional[int]) -> int:
     """Normalize parallelism requests (0 -> all CPUs, negative offsets allowed)."""
     total = os.cpu_count() or 1
     if n_jobs is None:
-        return 1
+        return max(1, total // 2)
     if n_jobs == 0:
         return total
     if n_jobs < 0:
@@ -81,6 +83,8 @@ def prepare_deseq_dataset(
     pseudobulk: PseudobulkResult,
     *,
     design_columns: Optional[Sequence[str]] = None,
+    design: Optional[str] = None,
+    annotation_columns: Optional[Sequence[str]] = None,
     metadata_columns: Optional[Sequence[str]] = None,
     min_counts: Optional[float] = 10.0,
     min_variance: Optional[float] = 1.0,
@@ -101,30 +105,33 @@ def prepare_deseq_dataset(
     metadata = pseudobulk.metadata.copy()
     metadata = metadata.loc[counts_df.index]
 
-    design_cols = _select_design_columns(metadata, design_columns)
-    design_df = metadata.loc[:, design_cols].copy()
-
-    # Optional additional metadata columns (e.g., sample/time/drug)
-    if metadata_columns:
-        extra_missing = [col for col in metadata_columns if col not in metadata.columns]
-        if extra_missing:
-            raise KeyError(f"Requested metadata columns not found: {extra_missing}")
-        extra_df = metadata.loc[:, metadata_columns]
-        design_df = pd.concat([design_df, extra_df], axis=1)
-
-    # Sanitize column names for DESeq2 formula compatibility
-    rename_map = {col: _sanitize_column(col) for col in design_df.columns}
-    sanitized_design_cols = []
-    for col in design_cols:
-        new_name = rename_map.get(col, _sanitize_column(col))
-        if new_name in sanitized_design_cols:
-            raise ValueError(
-                "Sanitized design column names are not unique. Please rename cluster columns to avoid collisions."
-            )
-        sanitized_design_cols.append(new_name)
-
-    design_df = design_df.rename(columns=rename_map)
-    design_colnames = sanitized_design_cols
+    if design is not None and design_columns is not None:
+        raise ValueError("Provide either design or design_columns, not both.")
+    annotations = tuple(annotation_columns or metadata_columns or ())
+    if annotation_columns is not None and metadata_columns is not None:
+        raise ValueError("Provide annotation_columns; metadata_columns is a compatibility alias.")
+    if design is not None:
+        design_df, formula_terms, coefficient_map, reference = build_design_frame(
+            metadata, formula=design, annotation_columns=annotations
+        )
+        design_formula = design
+        design_colnames = list(design_df.columns)
+        dds_metadata = metadata.loc[:, list(dict.fromkeys([*formula_terms, *annotations]))].copy()
+    else:
+        design_cols = _select_design_columns(metadata, design_columns)
+        design_df = metadata.loc[:, design_cols].copy()
+        rename_map = {col: _sanitize_column(col) for col in design_df.columns}
+        design_df = design_df.rename(columns=rename_map)
+        design_colnames = list(design_df.columns)
+        formula_terms = tuple(design_cols)
+        coefficient_map = {str(key): str(value) for key, value in rename_map.items()}
+        reference = None
+        design_formula = "~ 0 + " + " + ".join(design_colnames)
+        dds_metadata = design_df
+    design_spec = make_design_spec(
+        design_df, formula=design_formula, terms=formula_terms,
+        coefficient_map=coefficient_map, reference=reference
+    )
 
     # Filter genes
     mask = pd.Series(True, index=counts_df.columns)
@@ -140,18 +147,28 @@ def prepare_deseq_dataset(
         raise ValueError("No genes remain after filtering; relax filtering thresholds or provide a gene list.")
 
     inference_kwargs = dict(inference_kwargs or {})
-    eff_cpus = _effective_n_jobs(inference_kwargs.get("n_cpus", 0))
+    eff_cpus = _effective_n_jobs(inference_kwargs.get("n_cpus"))
+    requested_cpus = inference_kwargs.get("n_cpus")
     inference_kwargs["n_cpus"] = eff_cpus
     inference = DefaultInference(**inference_kwargs)
 
-    design_formula = "~ 0 + " + " + ".join(design_colnames)
     dds = DeseqDataSet(
         counts=counts_df,
-        metadata=design_df,
+        metadata=dds_metadata,
         design=design_formula,
         refit_cooks=refit_cooks,
         inference=inference,
     )
+    dds._sc_robust_design_spec = design_spec
+    dds._sc_robust_diagnostics = {
+        "status": "prepared",
+        "fit_id": design_spec.fit_id,
+        "formula": design_spec.formula,
+        "input_gene_count": int(pseudobulk.counts.shape[1]),
+        "modeled_gene_count": int(counts_df.shape[1]),
+        "design": design_spec.to_dict(),
+        "execution": {"requested_n_cpus": requested_cpus, "resolved_n_cpus": eff_cpus},
+    }
     return dds
 
 
@@ -299,7 +316,7 @@ def run_cluster_vs_all(
     plot_dir: Optional[Union[str, Path]] = None,
     save_dir: Optional[Union[str, Path]] = None,
     save_objects: bool = False,
-    n_jobs: int = 0,
+    n_jobs: int = 1,
 ) -> DEAnalysisResult:
     """Perform cluster-vs-all DE tests using a cell-means design matrix."""
     matrix = _ensure_design_matrix(dds)
@@ -388,12 +405,15 @@ def run_cluster_vs_all(
         },
         design_columns=design_cols,
         artifacts=artifacts,
+        design=getattr(getattr(dds, "_sc_robust_design_spec", None), "to_dict", lambda: None)(),
+        diagnostics=getattr(dds, "_sc_robust_diagnostics", {}),
     )
 
 
 def run_pairwise_de(
     dds: "DeseqDataSet",
-    cluster_pairs: Iterable[Tuple[str, str]],
+    cluster_pairs: Optional[Iterable[Tuple[str, str]]] = None,
+    pairs: Optional[Iterable[Tuple[str, str]]] = None,
     *,
     alpha: float = 0.05,
     gene_annotations: Optional[pd.DataFrame] = None,
@@ -402,14 +422,18 @@ def run_pairwise_de(
     plot_dir: Optional[Union[str, Path]] = None,
     save_dir: Optional[Union[str, Path]] = None,
     save_objects: bool = False,
-    n_jobs: int = 0,
+    n_jobs: int = 1,
 ) -> DEAnalysisResult:
     """
     Perform pairwise differential expression analysis between specified clusters.
     """
     matrix = _ensure_design_matrix(dds)
     design_cols = list(matrix.columns)
-    pairs = list(cluster_pairs)
+    if cluster_pairs is not None and pairs is not None:
+        raise ValueError("Provide either pairs or cluster_pairs, not both.")
+    pairs = list(pairs if pairs is not None else (cluster_pairs or ()))
+    if not pairs:
+        raise ValueError("At least one pair is required.")
     contrast_results: Dict[str, pd.DataFrame] = {}
     artifacts: MutableMapping[str, object] = {}
 
@@ -494,6 +518,8 @@ def run_pairwise_de(
         },
         design_columns=design_cols,
         artifacts=artifacts,
+        design=getattr(getattr(dds, "_sc_robust_design_spec", None), "to_dict", lambda: None)(),
+        diagnostics=getattr(dds, "_sc_robust_diagnostics", {}),
     )
 
 
@@ -507,7 +533,7 @@ def run_all_pairwise_de(
     plot_dir: Optional[Union[str, Path]] = None,
     save_dir: Optional[Union[str, Path]] = None,
     save_objects: bool = False,
-    n_jobs: int = 0,
+    n_jobs: int = 1,
 ) -> DEAnalysisResult:
     """Convenience wrapper that evaluates every pair of design columns."""
     matrix = _ensure_design_matrix(dds)
