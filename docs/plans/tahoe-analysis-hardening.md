@@ -19,8 +19,10 @@ pseudobulk boundaries, reconstructable DE designs and contrasts, structured
 fit diagnostics, reusable artifact checks, and deterministic Leiden calls.
 
 Production DE is additionally gated on recovering and validating the intended
-sparse-regime PyDESeq2 behavior. The dirty sibling `../PyDESeq2` checkout is an
-audit input, not a dependency or a source from which code may be copied.
+sparse-regime PyDESeq2 behavior from the inline implementation and repository
+history in `../PyDESeq2`. That checkout is the implementation source to audit,
+but production must pin reviewed, committed code rather than import a dirty
+sibling working tree.
 
 ## Audit Summary
 
@@ -64,16 +66,21 @@ when ambiguity remains.
 
 ### Annotation and partition labels
 
-`cluster_labels` describes the analytical grouping used by `within_cluster`.
-`sample_labels` remains descriptive metadata and must be documented as such.
-A new `partition_labels` argument declares a hard boundary. The implementation
-will partition each boundary group independently, remap source indices to the
-global input, and verify after construction that no pseudobulk mixes groups.
-Filtering cross-group edges alone is insufficient because a graph partitioner
-can reuse one partition across disconnected components.
+`cluster_labels` describes the analytical grouping used by the legacy
+`within_cluster` mode. `sample_labels` remains descriptive metadata and must be
+documented as such. The canonical hard-boundary API will instead use metadata
+factor names: `partition_by="sample"`, `partition_by="cluster"`, or
+`partition_by=["sample", "cluster"]`. Multiple factors form an exact joint key.
+The implementation partitions each key independently, remaps source indices to
+the global input, and verifies after construction that no pseudobulk mixes
+keys. Filtering cross-group edges alone is insufficient because a graph
+partitioner can reuse one partition across disconnected components.
 
-`group_labels` may be accepted as a compatibility alias only if one canonical
-name is selected before release. Supplying both names must fail.
+The low-level array API may accept a named mapping of factor arrays when a
+metadata frame is unavailable. Anonymous `partition_labels` is retained only
+as a compatibility adapter; new provenance must always record factor names and
+levels. Partition factors remain available as pseudobulk annotations and enter
+the DE design only when explicitly named in the formula.
 
 ### DE design and contrasts
 
@@ -95,10 +102,13 @@ requested pairs are evaluated.
 ### CPU behavior
 
 Fit-level and contrast-level parallelism will be separate, named settings.
-Defaults will avoid nested use of every host CPU. Resolved worker counts are
-stored in provenance, and a request for parallelism at both levels emits an
-explicit warning or fails under strict policy. The restricted-joblib backend
-workaround remains separate from numerical fallback behavior.
+When no worker count is supplied, the fit uses half of the CPUs visible to the
+process or scheduler, rounded down with a minimum of one. Only one layer is
+parallel by default; contrast-level parallelism remains one unless explicitly
+requested. Resolved worker counts are stored in provenance, and nested
+parallel requests emit an explicit warning or fail under strict policy. The
+restricted-joblib backend workaround remains separate from numerical fallback
+behavior.
 
 ### Structured results
 
@@ -108,42 +118,44 @@ is provided for naturally tabular findings and per-contrast diagnostics.
 Fitted PyDESeq2 objects may remain attached for interactive work, but a batch
 runner must not need to pickle or inspect them to audit a result.
 
-## Requester Decisions Needed
+## Clarified Decisions and Remaining Guidance
 
-The following answers should be recorded before the affected workstream is
-considered production-ready. Only the first two block initial implementation;
-the others have safe provisional defaults but affect scientific policy or
-backward compatibility.
+The requester clarified:
 
-1. What exact PyDESeq2 artifact produced the successful LUAD sparse fits: an
-   environment lock, wheel, container digest, fork commit, or archived source?
-   Please also identify one known successful sparse fit that can become a
-   regression fixture or numerical reference.
-2. What was the intended statistical behavior of the local ridge changes, and
-   who will approve the fallback trigger, penalty, terminal-failure policy, and
-   numerical tolerances? The current dirty checkout is not executable evidence
-   of that behavior.
-3. What is Tahoe's canonical hard pseudobulk boundary key? Confirm whether it
-   is well, sample, or a composite key, and specify what to do when a boundary
-   has too few cells for the requested pseudobulk size. The package will never
-   merge undersized groups across a declared boundary.
-4. Confirm the initial Tahoe formula and condition encoding. The proposed
+- The PyDESeq2 behavior is inline software logic, not a serialized fit
+  artifact. Audit the local repository history and current implementation. The
+  intended fallback is a narrow epsilon safeguard at the unstable numerical
+  operation, preventing denominator or matrix-inversion explosion for poor
+  fits rather than introducing a new general regularized estimator.
+- Pseudobulk boundaries are user-selectable metadata factors, supporting keys
+  such as sample, cluster, or the exact joint sample-and-cluster key. Those
+  factors must remain identifiable in output metadata and DE provenance.
+- Canonical cell IDs are the AnnData observation IDs captured when data are
+  first loaded. Validate uniqueness at ingestion and propagate those IDs
+  unchanged through split, graph, pseudobulk, and DE artifacts.
+- Validation should be strict by default for invariant-breaking conditions;
+  failures and warning-only numerical outcomes are enumerated below rather than
+  controlled by one ambiguous global strictness flag.
+- Default fit parallelism uses half of the scheduler-visible CPUs. Explicit
+  overrides remain available, resolved counts are recorded, and only one layer
+  is parallel by default.
+- LUAD is a code template, not a dataset re-analysis target. No LUAD data
+  fixture, expected-result recreation, or re-analysis smoke run is required.
+
+Three guidance points remain:
+
+1. The package needs an explicit policy for undersized pseudobulk boundary
+   groups. The proposed default is an actionable error, with an explicit
+   `undersized="drop"` option; combining groups across a boundary is forbidden.
+2. Confirm the initial Tahoe formula and condition encoding. The proposed
    default is `~ 0 + condition`, with drug-dose labels as numerators and the
    same-plate DMSO label as denominator; Tahoe orchestration remains
    responsible for eligible pair selection.
-5. Which cell identifier is canonical across counts, metadata, graph, and
-   split artifacts? Stable source hashes require a unique, immutable ID rather
-   than row positions when artifacts may be reconstructed independently.
-6. Should rank deficiency, zero libraries, seed-bridge failure, and mixed
-   pseudobulk boundaries always be hard failures in production? The proposed
-   strict default is error, with explicit warning modes only for backward
-   compatibility.
-7. May CPU defaults change from implicit all-host-CPUs behavior to one worker,
-   with explicit fit-level and contrast-level overrides? This is safer for
-   batch scheduling but is a visible behavior change.
-8. What minimal LUAD input and expected outputs may be committed or generated
-   for the compatibility smoke test? If no redistributable fixture exists, the
-   requester should provide an immutable artifact location and checksum.
+3. Committed PyDESeq2 history contains the existing IRLS `1e-6` ridge at
+   `780b48ec`. Only the dispersion retry is confined to working-tree changes.
+   Confirm whether the request refers to the existing IRLS safeguard, the
+   uncommitted dispersion retry, or both; the current plan treats the dispersion
+   retry as the behavior that still needs formalization.
 
 ## Workstreams
 
@@ -152,27 +164,39 @@ backward compatibility.
 This is the first production gate and should be isolated from normal package
 API changes.
 
-1. Locate the exact PyDESeq2 artifact used by the successful LUAD environment:
-   lock files, environment exports, wheel caches, image metadata, commits, or
-   archived result provenance. Record hashes and version information.
-2. Reproduce the ordinary fit and the two intended sparse/singular failures in
-   a clean environment. Preserve the failing fixtures before changing code.
-3. Reconstruct the intended IRLS and dispersion fallback behavior as a
-   reviewed inference implementation or upstream/fork patch. Do not use the
-   dirty sibling diff directly; it currently has an unresolved `la` reference
-   and passes an unsupported `ridge_penalty` argument.
-4. Emit per-gene convergence, fallback activation, and terminal failure as
+Audit finding: `sc_robust.fit_deseq_dataset` reaches PyDESeq2 dispersion fitting
+through `fit_genewise_dispersions()` and `fit_MAP_dispersions()`, and reaches
+IRLS through initial mean estimation and `fit_LFC()`. Committed PyDESeq2 IRLS
+already adds a `1e-6` diagonal ridge (`780b48ec`, 2023-01-09). The uncommitted
+IRLS wrapper duplicates that protection incompletely and is not part of the
+candidate fix. The novel working-tree behavior is in the Cox-Reid dispersion
+gradient: after a singular Fisher-information inversion, it retries with
+`1e-6 * I`. Validate and formalize that narrow dispersion fallback first; add
+another fallback only if a separate failing fixture demonstrates the need.
+
+1. Trace the fallback through the complete local PyDESeq2 history, all refs,
+   repository metadata, and the current inline changes. Record the exact base
+   version and every relevant code path.
+2. Isolate the intended safeguard from incomplete experimental changes. The
+   current working tree has an unresolved `la` reference and passes an
+   unsupported `ridge_penalty` argument, so it cannot be pinned as-is.
+3. Implement the narrow epsilon stabilization at the unstable numerical
+   operation, preserving stock behavior for well-conditioned fits rather than
+   introducing a general regularized estimator. Name and document the fixed or
+   configurable epsilon and report each activation.
+4. Reproduce ordinary fits and all observed sparse/singular failure sites in a
+   clean environment. Preserve the failing fixtures before changing code.
+5. Emit per-gene convergence, fallback activation, and terminal failure as
    machine-readable records rather than stdout messages.
-5. Compare coefficients, standard errors, dispersions, Cook's distances, and
+6. Compare coefficients, standard errors, dispersions, Cook's distances, and
    null behavior against stock PyDESeq2 on well-conditioned fixtures.
-6. Pin an immutable reviewed release or fork commit in package metadata, LUAD,
+7. Pin an immutable reviewed release or fork commit in package metadata, LUAD,
    and CI. No production import may resolve through the sibling checkout.
 
 The result of this workstream is a short decision record identifying the
-supported artifact, fallback trigger and mathematics, numerical tolerances,
-and ownership strategy. If the historical artifact cannot be recovered, the
-replacement must be validated as new behavior rather than presented as an
-exact reconstruction.
+supported commit, fallback location and epsilon, numerical tolerances, and
+ownership strategy. If no historical commit contains the working behavior, the
+implementation is reviewed and recorded as a new formalization of inline code.
 
 ### 1. Clarify the DE design and add diagnostics
 
@@ -226,27 +250,44 @@ its file layout. Reuse the same hash implementation in robust, pseudobulk, and
 DE provenance. Extend `PseudobulkResult` and `DEAnalysisResult` with consistent
 JSON-safe provenance; do not introduce a count-split result hierarchy.
 
+Strict defaults are scoped by failure type:
+
+- Hard errors cover invalid counts, failed conservation, duplicate or missing
+  IDs, shape/order mismatches, mixed partition keys, zero libraries,
+  rank-deficient designs, unknown contrasts, and requested seed failures.
+- Per-gene numerical fallback or non-convergence is retained as a structured
+  warning and contrast diagnostic when the fit remains usable. No modeled
+  genes or a terminal model-stage failure is a hard fit failure.
+- Version or optional provenance differences are report findings whose severity
+  depends on whether they invalidate reconstruction, not a global strict flag.
+
 ### 3. Enforce pseudobulk boundaries and source provenance
 
-Add `partition_labels`, optional `cell_ids`, and
-`retain_source_cells: bool = True` to `build_pseudobulk`. Existing calls retain
-their output shape and full `source_cells` lists by default.
+Add `cell_metadata`, `partition_by: str | Sequence[str] | None`, optional
+`cell_ids`, and `retain_source_cells: bool = True` to `build_pseudobulk`.
+Existing calls retain their output shape and full `source_cells` lists by
+default. A named mapping of arrays supports low-level callers without a frame.
+
+AnnData-facing workflows capture unique `adata.obs_names` at first loading and
+propagate them as `cell_ids`. Low-level callers may use positional IDs only for
+legacy compatibility, with weaker provenance recorded explicitly.
 
 When a boundary is supplied:
 
-1. Validate graph, count, cluster, sample, boundary, and cell-ID lengths.
-2. Process boundary groups in stable declared/input order.
-3. Run the existing topology or within-cluster builder independently per
+1. Validate graph, counts, metadata index, labels, and cell-ID alignment.
+2. Resolve every `partition_by` factor and reject missing or null key values.
+3. Form exact joint keys for multiple factors in stable input order.
+4. Run the existing topology or within-cluster builder independently per
    group; do not fork a second aggregation algorithm.
-4. Remap local source positions to global input positions.
-5. Generate IDs from a stable boundary key plus local pseudobulk ordinal.
-6. Hard-fail if any output contains more than one boundary value.
+5. Apply the declared undersized-group policy without merging across keys.
+6. Remap local source positions and generate IDs from factor keys plus a local
+   pseudobulk ordinal.
+7. Hard-fail if any output contains more than one value for any boundary factor.
 
 Metadata always includes `source_cell_count`, a versioned hash of sorted stable
-cell IDs (or global integer positions when IDs are unavailable), mode, seed,
-boundary key, and whether source lists were retained. Document that hash
-membership is order-insensitive while pseudobulk IDs are stable only for the
-declared group and cell ordering.
+cell IDs, mode, seed, factor names and values, boundary key, ID source, and
+whether source lists were retained. Hash membership is order-insensitive while
+pseudobulk IDs are stable only for the declared group and cell ordering.
 
 No graph-free aggregation API is included in this delivery unless the Tahoe
 pilot demonstrates that independent per-well graph partitioning is unsuitable.
@@ -298,8 +339,9 @@ Add focused test modules rather than expanding only the end-to-end fixture:
 
 - `tests/test_count_split.py`: dense/sparse conservation, invalid counts and
   proportions, fixed-order repeatability, and seed-bridge policy.
-- `tests/test_pseudobulk.py`: both existing modes, label types, strict boundary
-  isolation, source hashes, optional source lists, and stable IDs.
+- `tests/test_pseudobulk.py`: both existing modes, label types, strict isolation
+  across single and joint metadata factors, source hashes, optional source
+  lists, and stable IDs.
 - `tests/test_de_design.py`: categorical formula, annotation/design separation,
   coefficient mapping, selected pair orientation, and legacy aliases.
 - `tests/test_de_diagnostics.py`: success, filtering, rank failure, fallback,
@@ -307,15 +349,16 @@ Add focused test modules rather than expanding only the end-to-end fixture:
 - `tests/test_compatibility.py`: shape, ordered-ID, hash, policy, remediation,
   and deterministic serialization checks.
 - `tests/test_leiden_seed.py`: fixed-seed repeatability and propagation.
-- `tests/test_sparse_inference.py`: IRLS and dispersion fallback activation plus
-  ordinary-fit numerical comparisons.
+- `tests/test_sparse_inference.py`: every supported epsilon fallback activation
+  plus ordinary-fit numerical comparisons.
 
 Keep a fast core CI job for supported Python versions and add a required DE job
 with the immutable PyDESeq2 dependency. The DE job must fail on dependency
 installation or collection failure; it must not skip all DE tests. Store the
-resolved dependency versions in test output or an artifact. Add one LUAD smoke
-fixture or script invocation after package tests pass, using small committed or
-generated data and no sibling monkeypatches.
+resolved dependency versions in test output or an artifact. Add a package-level
+integration test for the public call sequence adapted from the LUAD code
+template. It must use synthetic package fixtures and must not load, reproduce,
+or re-analyze the LUAD dataset.
 
 ## Delivery and Commit Sequence
 
@@ -329,17 +372,18 @@ with the API they cover.
 5. Land strict pseudobulk boundaries and source provenance.
 6. Land count validation, seed policy, and conservation tests.
 7. Land seeded Leiden propagation and remove package-level nondeterminism.
-8. Update the tutorial/API documentation and CI, then run the LUAD smoke path.
+8. Update the tutorial/API documentation and CI, then complete a source-level
+   compatibility review against the LUAD template call sites.
 9. Tag a Tahoe pilot candidate only after all release gates pass.
 
-Commits should remain scoped to one workstream. The primary worktree's
-unrelated `.gitignore` modification is not part of this branch.
+Commits remain scoped to one workstream. Main-branch housekeeping commits are
+integrated only through the normal branch update process.
 
 ## Release Gates
 
-- The supported PyDESeq2 artifact is immutable, reviewed, and CI-tested.
-- Sparse IRLS and dispersion fallbacks are triggered by dedicated fixtures and
-  reported per gene.
+- The supported PyDESeq2 commit is immutable, reviewed, and CI-tested.
+- Every supported epsilon fallback is triggered by a dedicated fixture and
+  reported per gene without changing well-conditioned results.
 - Split outputs exactly conserve counts and fixed-order reproducibility is
   explicit.
 - Declared pseudobulk boundaries cannot be crossed silently.
@@ -348,7 +392,8 @@ unrelated `.gitignore` modification is not part of this branch.
 - Every fit emits diagnostics, including failed and partially filtered fits.
 - Shape-equal cell or gene reorder mismatches fail compatibility validation.
 - Fixed-seed Leiden repeats without a LUAD monkeypatch.
-- The package suite and LUAD smoke path pass in clean environments.
+- The package suite and synthetic public-workflow integration tests pass in
+  clean environments, and LUAD template call sites remain source-compatible.
 - Tahoe pins released package/dependency versions and imports no sibling
   working copy.
 
