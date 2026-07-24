@@ -28,6 +28,9 @@ def test_partition_by_joint_key_preserves_source_ids_and_boundary():
         random_state=7,
     )
     assert set(result.metadata["boundary_key"]) == {"s1|c1", "s1|c2", "s2|c1", "s2|c2"}
+    observed_sources = [cell for _, row in result.metadata.iterrows() for cell in row["source_cell_ids"]]
+    assert sorted(observed_sources) == sorted(metadata.index.tolist())
+    assert len(observed_sources) == len(set(observed_sources))
     for _, row in result.metadata.iterrows():
         assert set(row["source_cell_ids"]).issubset(set(metadata.index))
         assert row["source_cell_hash"]["ordering"] == "sorted"

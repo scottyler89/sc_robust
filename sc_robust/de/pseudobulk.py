@@ -202,7 +202,7 @@ def build_pseudobulk(
         observed_sizes = combined_meta["cell_n"].astype(int)
         if (observed_sizes != cells_per_pb).any():
             warnings.warn(
-                f"METIS target cells_per_pb={cells_per_pb} was advisory for partition boundaries "
+                f"METIS target cells_per_pb={cells_per_pb} was advisory for boundary keys {sorted(groups)!r} "
                 f"with observed size range {observed_sizes.min()}-{observed_sizes.max()}.",
                 UserWarning, stacklevel=2,
             )
