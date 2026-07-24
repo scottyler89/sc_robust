@@ -153,9 +153,164 @@ The requester clarified:
 - Both the existing IRLS epsilon and the uncommitted dispersion retry are in
   scope for validation, diagnostics, and immutable versioning.
 
-## Workstreams
+## Implementation Tracker
 
-### 0. Recover the supported PyDESeq2 inference path
+The table below is the single source of truth for milestone status. Detailed
+sections define scope and evidence requirements but do not maintain a second
+status value.
+
+Status values are `not started`, `in progress`, `blocked`, `done`, or `deferred`.
+
+| ID | Priority | Status | Depends on | Deliverable | Completion evidence |
+| --- | --- | --- | --- | --- | --- |
+| M0 | P0 | not started | none | Provenance, SSoT, compatibility foundation | commit and M0 validation output |
+| M1 | P0 | not started | none | Reviewed PyDESeq2 safeguards | immutable commit and numerical report |
+| M2 | P0 | not started | M0, M1 | Explicit DE design and diagnostics | commit and M2 validation output |
+| M3 | P1 | not started | M0 | Metadata-driven pseudobulk boundaries | commit and M3 validation output |
+| M4 | P1 | not started | M0 | Validated count-split adapter | commit and M4 validation output |
+| M5 | P1 | not started | M0 | Deterministic Leiden propagation | commit and M5 validation output |
+| M6 | P0 release gate | not started | M0-M5 | Integrated API, docs, CI, and compatibility review | release-candidate commit and CI URL |
+| D1 | P2 | deferred | M6 and Tahoe pilot | Streaming-friendly QC proposal | approved follow-up plan |
+
+Execution follows dependency order first and priority second. M0 and M1 may run
+in parallel; among otherwise ready milestones, P0 precedes P1. M6 remains last
+because it integrates every preceding milestone despite being a P0 release gate.
+
+Tracking rules:
+
+- Change current status only in this table; append each transition as an event
+  in the progress log.
+- Mark a milestone `done` only after its acceptance criteria and validation pass.
+- Record commit hashes and validation evidence in the progress log immediately.
+- Use one scoped implementation commit, or a short reviewable series, per milestone.
+
+### M0 Establish provenance, SSoT, and compatibility foundations (P0)
+
+**Depends on:** none
+
+Establish one provenance vocabulary and compatibility layer before result APIs
+begin recording additional fields.
+
+Implement one public provenance module that owns canonical JSON conversion,
+versioned hashing, dependency capture, stable fit/contrast IDs, immutable input
+snapshots, and compatibility findings. Replace private hash implementations and
+result-specific provenance conventions with calls into that module.
+
+Current audit findings: `_hash_strings` is private to `robust`; identifier
+hashing silently becomes `None` on failure; `_write_json(default=str)` can hide
+non-JSON values; timestamps are mixed with identity data; and mutable
+`parameters` mappings duplicate fields without a schema or ownership rule.
+
+#### SSoT ownership
+
+| Concern | Authoritative source | Result snapshot rule |
+| --- | --- | --- |
+| Cell IDs | unique `adata.obs_names` captured at first load | ordered IDs or versioned ordered hash; never regenerated from row number |
+| Gene IDs | ordered `adata.var_names` at the count boundary | ordered IDs or versioned ordered hash |
+| Matrix orientation | public API contract: cells x genes | record shape and orientation; transpose only inside the count-split adapter |
+| Run configuration | validated explicit function arguments | store normalized values once in `algorithm` provenance |
+| Partition factors | named columns in aligned cell metadata | store names, ordered levels, and exact joint-key rule |
+| DE design | validated formula/design specification | store formula, terms, matrix columns, rank, coefficient map, and reference |
+| Contrasts | explicit contrast specification | store numerator, denominator, vector, coefficient names, and direction |
+| Provenance schema | exported schema constants and typed records in the provenance module | no result-specific ad hoc schema versions |
+| Supported dependency constraints | package build metadata backed by one reviewed constraint source | CI consumes the same source; projects record their exact resolution |
+| Dependency versions | installed package metadata and reviewed commit IDs | capture once per run environment |
+| Execution settings | resolved scheduler-visible CPU count, seed, and backend | record requested and resolved values separately |
+| Artifact identity | canonical content hash plus schema version | paths are locations, never artifact identity |
+
+Authoritative inputs remain authoritative while a computation is live. Result
+provenance is an immutable snapshot sufficient to audit that computation; it
+must not become a second mutable configuration object.
+
+#### Stage lineage
+
+- Ingestion captures immutable cell/gene axis snapshots from initial AnnData.
+- Split provenance references the ingestion ID and records normalized
+  proportions, seed request/result, orientation, and conservation status.
+- Graph provenance references the compatible split/axis ID and records graph
+  parameters, seed, dependency versions, shape, and alignment hash.
+- Pseudobulk provenance references graph/count/axis IDs and records partition
+  factors, source membership hashes, mode, seed, and METIS size warnings.
+- DE provenance references pseudobulk/design IDs and records filters, fit
+  diagnostics, execution settings, and explicit contrast IDs.
+- Pathway provenance references contrast IDs and records library versions and
+  the per-contrast statistic-column mapping.
+
+Each stage stores parent stable IDs and compact snapshots, not mutable copies of
+the complete parent provenance tree. Compatibility validation runs before each
+expensive transition and its report ID is recorded on the child result.
+
+Hash semantics are distinct and named:
+
+- ordered-axis hashes detect cell/gene reordering;
+- sorted-membership hashes identify pseudobulk source membership; and
+- file/content checksums identify persisted artifacts independently of paths.
+
+Compatibility fields remain views over the canonical envelope. Existing
+`parameters` attributes become read-only views of `provenance.algorithm` rather
+than separate mappings. `design_columns`, graph summaries, and dependency
+versions are derived from their canonical design, diagnostic, or environment
+records. `artifacts` stores locations plus content identities and never becomes
+the source of scientific configuration.
+
+#### Provenance contract
+
+- Every serialized record carries a provenance `schema_version`.
+- Canonical serialization accepts JSON-native values only and fails on unknown
+  objects; do not use `default=str` as a silent conversion path.
+- Hash records include algorithm, schema/domain tag, encoding, and whether
+  ordering is significant. Shared hashing code is used everywhere.
+- Stable run, fit, and contrast IDs exclude timestamps, filesystem paths, and
+  mutable display labels. They derive only from canonical scientific inputs.
+- `created_utc` is event metadata and is never part of a stable identity hash.
+- Result records expose defensive/immutable mappings and deterministic export.
+
+`validate_compatibility` returns one `CompatibilityReport` for counts,
+metadata, graph, split, pseudobulk, and DE boundaries. Caller policy controls
+reporting (`report`, `warn`, or `error`) but never changes which checks run.
+
+Findings contain severity, stable code, field, expected value, observed value,
+expected/observed hash or shape where relevant, and a remediation hint.
+
+Required checks cover matrix/graph shapes, exact ordered cell and gene IDs,
+counts-to-metadata index alignment, split proportions and conservation,
+pseudobulk source hashes and partition factors, design/contrast identity, and
+relevant algorithm parameters and dependency versions.
+
+Strict defaults are scoped by failure type:
+
+- Hard errors cover invalid counts, failed conservation, duplicate or missing
+  IDs, shape/order mismatches, mixed partition keys, zero libraries,
+  rank-deficient designs, unknown contrasts, and requested seed failures.
+- Per-gene numerical fallback or non-convergence remains a structured warning
+  and diagnostic when the fit is usable. No modeled genes or a terminal model
+  stage failure is a hard fit failure.
+- Version or optional provenance differences are findings whose severity
+  depends on whether they invalidate reconstruction, not a global strict flag.
+
+#### Acceptance criteria
+
+- [ ] One shared hash/serializer implementation replaces private variants.
+- [ ] Repeated equivalent inputs produce byte-identical canonical JSON and IDs.
+- [ ] Shape-equal reordered cell/gene fixtures fail with actionable findings.
+- [ ] All provenance records serialize without pickle or `default=str`.
+- [ ] Result fields reference one canonical design/config snapshot rather than
+  duplicating independently mutable values.
+- [ ] Robust, pseudobulk, DE, and pathway results export the same versioned
+  provenance envelope with stage-specific payloads.
+
+#### Validation
+
+```bash
+python -m pytest -q tests/test_provenance.py tests/test_compatibility.py
+python -m pytest -q tests/test_axis_conventions.py
+```
+
+Record the implementation commit, test output, and one redacted example JSON.
+
+### M1 Recover the supported PyDESeq2 inference path (P0)
+
+**Depends on:** none
 
 This is the first production gate and should be isolated from normal package
 API changes.
@@ -189,12 +344,36 @@ focused regression coverage and machine-readable diagnostics.
 7. Pin an immutable reviewed release or fork commit in package metadata, LUAD,
    and CI. No production import may resolve through the sibling checkout.
 
-The result of this workstream is a short decision record identifying the
+The result of this milestone is a short decision record identifying the
 supported commit, fallback location and epsilon, numerical tolerances, and
 ownership strategy. If no historical commit contains the working behavior, the
 implementation is reviewed and recorded as a new formalization of inline code.
 
-### 1. Clarify the DE design and add diagnostics
+#### Acceptance criteria
+
+- [ ] A sparse IRLS fixture exercises and reports the committed `1e-6` ridge.
+- [ ] A singular Cox-Reid dispersion fixture triggers exactly one `1e-6 * I`
+  retry and records the affected gene.
+- [ ] Ordinary-fit coefficients, standard errors, dispersions, Cook's distances,
+  and null behavior remain within approved tolerances.
+- [ ] Fallback, convergence, and terminal failure are machine-readable and are
+  not available only through stdout.
+- [ ] A reviewed immutable commit is pinned; production imports no dirty sibling.
+
+#### Validation
+
+```bash
+(cd ../PyDESeq2 && python -m pytest -q tests/test_sparse_fallbacks.py)
+python -m pytest -q tests/test_sparse_inference.py
+python -m pytest -q tests/test_de_diagnostics.py -k fallback
+```
+
+Record the PyDESeq2 commit, dependency lock diff, numerical comparison report,
+and test output.
+
+### M2 Clarify the DE design and add diagnostics (P0)
+
+**Depends on:** M0, M1
 
 Refactor `prepare_deseq_dataset` around an explicit design specification while
 preserving its current shorthand. Validate required metadata columns, category
@@ -222,42 +401,31 @@ Failed and partially filtered fits must still return or raise with a complete
 diagnostic record. Define one documented exception that carries the record for
 fail-fast callers; orchestration may convert it into a failed result.
 
-### 2. Add artifact compatibility and provenance APIs
+#### Acceptance criteria
 
-Introduce one public validator, tentatively `validate_compatibility`, that
-accepts the available counts, metadata, graph, split, and identifier records.
-It returns a `CompatibilityReport` containing deterministic findings with
-severity, field, expected value, observed value, and remediation. A caller
-policy selects `report`, `warn`, or `error`; policy never changes what was
-checked.
+- [ ] A generic categorical condition fixture produces the intended explicit
+  no-intercept design; Tahoe-specific encoding remains undecided.
+- [ ] Annotation-only columns remain outside the model and requested formula
+  terms enter it.
+- [ ] One fit evaluates only requested `pairs`; `cluster_pairs` remains a tested
+  compatibility alias.
+- [ ] Formula, coefficient mapping, reference, design matrix, contrast vector,
+  direction, and stable IDs serialize from one canonical design snapshot.
+- [ ] Success, filtering, rank failure, fallback, and terminal failure emit
+  stable diagnostics; resolved CPU settings are visible and non-nested.
 
-Checks include:
+#### Validation
 
-- matrix and graph shapes;
-- exact ordered cell and gene IDs, including shape-equal reorder failures;
-- counts-to-metadata index alignment;
-- deterministic ID and artifact hashes;
-- split proportions and exact count conservation when split matrices exist;
-- pseudobulk source hashes and boundary labels; and
-- relevant algorithm parameters and dependency versions.
+```bash
+python -m pytest -q tests/test_de_design.py
+python -m pytest -q tests/test_de_diagnostics.py
+```
 
-Lift the generic behavior of LUAD's guards and SHA-256 manifest helpers, not
-its file layout. Reuse the same hash implementation in robust, pseudobulk, and
-DE provenance. Extend `PseudobulkResult` and `DEAnalysisResult` with consistent
-JSON-safe provenance; do not introduce a count-split result hierarchy.
+Record the implementation commit, example fit/contrast JSON, and test output.
 
-Strict defaults are scoped by failure type:
+### M3 Enforce pseudobulk boundaries and source provenance (P1)
 
-- Hard errors cover invalid counts, failed conservation, duplicate or missing
-  IDs, shape/order mismatches, mixed partition keys, zero libraries,
-  rank-deficient designs, unknown contrasts, and requested seed failures.
-- Per-gene numerical fallback or non-convergence is retained as a structured
-  warning and contrast diagnostic when the fit remains usable. No modeled
-  genes or a terminal model-stage failure is a hard fit failure.
-- Version or optional provenance differences are report findings whose severity
-  depends on whether they invalidate reconstruction, not a global strict flag.
-
-### 3. Enforce pseudobulk boundaries and source provenance
+**Depends on:** M0
 
 Add `cell_metadata`, `partition_by: str | Sequence[str] | None`, optional
 `cell_ids`, and `retain_source_cells: bool = True` to `build_pseudobulk`.
@@ -289,7 +457,31 @@ pseudobulk IDs are stable only for the declared group and cell ordering.
 No graph-free aggregation API is included in this delivery unless the Tahoe
 pilot demonstrates that independent per-well graph partitioning is unsuitable.
 
-### 4. Harden the existing count-split adapter
+#### Acceptance criteria
+
+- [ ] Existing topology and `within_cluster` calls remain backward compatible.
+- [ ] `partition_by` accepts one or multiple metadata factor names and no output
+  crosses any exact joint key.
+- [ ] Every eligible input cell is assigned exactly once and retains its
+  canonical initial AnnData observation ID in source provenance.
+- [ ] Inexact METIS target sizes preserve cells and emit one compact warning
+  containing the factor key, requested target, and observed size range.
+- [ ] Metadata records source count/hash, factor names/values, mode, seed, ID
+  source, and whether full source lists were retained.
+- [ ] Sparse counts and categorical, string, and integer factors are covered.
+
+#### Validation
+
+```bash
+python -m pytest -q tests/test_pseudobulk.py
+python -m pytest -q tests/test_axis_conventions.py
+```
+
+Record the implementation commit, warning example, provenance JSON, and tests.
+
+### M4 Harden the existing count-split adapter (P1)
+
+**Depends on:** M0
 
 Add a thin cells x genes public adapter that delegates to `multi_split` and is
 also used by `robust.do_splits`. It validates:
@@ -309,7 +501,29 @@ Document and test the actual guarantee: same seed plus same ordered matrix
 repeats. `multi_split` is order-dependent, so shard/order invariance remains a
 Tahoe adapter responsibility and is not claimed by `sc_robust`.
 
-### 5. Expose seeded Leiden consistently
+#### Acceptance criteria
+
+- [ ] Dense and sparse fixtures conserve every element exactly.
+- [ ] Negative, non-integral, non-finite, malformed, and invalid-proportion
+  inputs fail before `multi_split` can coerce them.
+- [ ] Same seed plus the same ordered cells x genes matrix repeats exactly.
+- [ ] A failed numba seed bridge cannot pass silently when determinism is
+  requested.
+- [ ] The adapter delegates to `multi_split`, states both orientations, and
+  documents fixed-order reproducibility versus order invariance.
+
+#### Validation
+
+```bash
+python -m pytest -q tests/test_count_split.py
+python -m pytest -q tests/test_robust_pipeline.py
+```
+
+Record the implementation commit, conservation summary, and test output.
+
+### M5 Expose seeded Leiden consistently (P1)
+
+**Depends on:** M0
 
 Add one canonical `random_state` parameter to
 `perform_leiden_clustering`, accepting `seed` as a compatibility alias if
@@ -322,7 +536,64 @@ The same graph, resolution, dependency versions, and seed must produce exactly
 the same labels in a regression fixture. After release, LUAD's local helpers
 and monkeypatches can be removed in a separate LUAD commit.
 
-### 6. Keep streaming QC deferred
+#### Acceptance criteria
+
+- [ ] Same graph, resolution, dependency versions, and seed produce identical
+  labels and preserve the existing return contract.
+- [ ] `random_state` is canonical and any `seed` alias is deterministic and
+  conflict-checked.
+- [ ] Graph and gene-module workflows propagate and record the resolved seed
+  plus Leiden/igraph versions.
+- [ ] LUAD's local seeded helper call patterns have a source-compatible package
+  replacement; no LUAD dataset execution is required.
+
+#### Validation
+
+```bash
+python -m pytest -q tests/test_leiden_seed.py tests/test_graph.py
+```
+
+Record the implementation commit, version/seed provenance, and test output.
+
+### M6 Integrate public APIs, documentation, and release validation (P0 gate)
+
+**Depends on:** M0-M5
+
+Integrate completed milestones without creating a second orchestration layer or
+moving Tahoe-specific policy into the package.
+
+Deliverables:
+
+- public exports, compatibility aliases, and deprecation guidance;
+- README tutorials for count splitting, partition factors, DE design, selected
+  contrasts, diagnostics, provenance, and CPU controls;
+- required core and pinned-DE CI jobs that cannot silently skip critical tests;
+- a synthetic package integration flow adapted from LUAD's public call pattern,
+  plus source-level review of LUAD call sites without re-analyzing its data; and
+- immutable package/dependency pins and release notes.
+
+#### Acceptance criteria
+
+- [ ] Every M0-M5 acceptance checkbox is complete with linked evidence.
+- [ ] Public examples use only exported APIs and reconstruct results from
+  serialized provenance.
+- [ ] Legacy aliases have tests and actionable deprecation messages.
+- [ ] Core and DE CI jobs pass in clean environments with resolved versions.
+- [ ] No production path imports a dirty sibling or applies a runtime monkeypatch.
+
+#### Validation
+
+```bash
+python -m pytest -q
+python -m build
+```
+
+Complete the LUAD source-compatibility checklist and record the release-candidate
+commit, CI run, built wheel metadata, and documentation review.
+
+### D1 Keep streaming QC deferred (P2)
+
+**Depends on:** M6 and measured Tahoe pilot access patterns
 
 Do not add a speculative streaming abstraction in this branch. Document the
 existing separation among metric calculation, threshold derivation,
@@ -330,69 +601,62 @@ classification, and plotting, and capture Tahoe pilot measurements that would
 drive a future API. Tahoe retains source scanning, mergeable summaries,
 stable-ID sampling, and threshold policy until that follow-up is approved.
 
-## Tests and CI
+#### Start criteria
 
-Add focused test modules rather than expanding only the end-to-end fixture:
+- [ ] M6 is complete and a frozen Tahoe pilot has measured actual access paths.
+- [ ] The proposal identifies exact versus approximate metrics, merge behavior,
+  stable-ID sampling, error bounds, and merge-order validation.
+- [ ] A separate follow-up plan is approved. D1 does not add implementation
+  code to the current hardening branch.
 
-- `tests/test_count_split.py`: dense/sparse conservation, invalid counts and
-  proportions, fixed-order repeatability, and seed-bridge policy.
-- `tests/test_pseudobulk.py`: both existing modes, label types, strict isolation
-  across single and joint metadata factors, source hashes, optional source
-  lists, and stable IDs.
-- `tests/test_de_design.py`: categorical formula, annotation/design separation,
-  coefficient mapping, selected pair orientation, and legacy aliases.
-- `tests/test_de_diagnostics.py`: success, filtering, rank failure, fallback,
-  terminal failure, JSON export, and stable IDs.
-- `tests/test_compatibility.py`: shape, ordered-ID, hash, policy, remediation,
-  and deterministic serialization checks.
-- `tests/test_leiden_seed.py`: fixed-seed repeatability and propagation.
-- `tests/test_sparse_inference.py`: every supported epsilon fallback activation
-  plus ordinary-fit numerical comparisons.
+## Release Validation
 
-Keep a fast core CI job for supported Python versions and add a required DE job
-with the immutable PyDESeq2 dependency. The DE job must fail on dependency
-installation or collection failure; it must not skip all DE tests. Store the
-resolved dependency versions in test output or an artifact. Add a package-level
-integration test for the public call sequence adapted from the LUAD code
-template. It must use synthetic package fixtures and must not load, reproduce,
-or re-analyze the LUAD dataset.
+Each milestone owns its focused tests and evidence; this section defines only
+suite-level validation so commands are not duplicated in multiple inventories.
 
-## Delivery and Commit Sequence
+CI is required to provide:
 
-Each numbered item is independently reviewed and committed; tests and docs ship
-with the API they cover.
+- a fast core matrix across supported Python versions;
+- a pinned PyDESeq2 job that fails on install, collection, or all-tests-skipped;
+- the M6 synthetic public-workflow integration test without LUAD data;
+- build and wheel metadata validation; and
+- failure on dirty-sibling imports or runtime monkeypatch requirements.
 
-1. Commit this plan and the PyDESeq2 recovery decision record template.
-2. Recover/pin PyDESeq2 behavior and land sparse inference fixtures.
-3. Land the explicit DE design contract, generic `pairs`, and diagnostics.
-4. Land compatibility reports and shared provenance hashing.
-5. Land strict pseudobulk boundaries and source provenance.
-6. Land count validation, seed policy, and conservation tests.
-7. Land seeded Leiden propagation and remove package-level nondeterminism.
-8. Update the tutorial/API documentation and CI, then complete a source-level
-   compatibility review against the LUAD template call sites.
-9. Tag a Tahoe pilot candidate only after all release gates pass.
+M6 runs the complete release validation:
 
-Commits remain scoped to one workstream. Main-branch housekeeping commits are
-integrated only through the normal branch update process.
+```bash
+python -m pytest -q
+python -m build
+```
+
+## Progress Log
+
+The tracker table is the SSoT for current status. This append-only log records
+events and evidence; it does not redefine milestone status.
+
+| Date | Milestone | Event | Commit | Validation/evidence |
+| --- | --- | --- | --- | --- |
+| 2026-07-24 | PLAN | Initial audit, requester decisions, and baseline | `634bc8c`, `9c2165c`, `570b887`, `5f4e233` | baseline `38 passed`; staged diff checks passed |
+
+Update protocol:
+
+- Set a milestone `in progress` in the tracker before implementation begins.
+- Append commits and validation evidence immediately after each scoped change.
+- If blocked, record the concrete blocker, owner, and next decision needed.
+- Never mark `done` based only on implementation; acceptance and validation gate it.
 
 ## Release Gates
 
-- The supported PyDESeq2 commit is immutable, reviewed, and CI-tested.
-- Every supported epsilon fallback is triggered by a dedicated fixture and
-  reported per gene without changing well-conditioned results.
-- Split outputs exactly conserve counts and fixed-order reproducibility is
-  explicit.
-- Declared pseudobulk boundaries cannot be crossed silently.
-- Formula, coefficient mapping, reference, and every contrast are
-  reconstructable from serialized result metadata.
-- Every fit emits diagnostics, including failed and partially filtered fits.
-- Shape-equal cell or gene reorder mismatches fail compatibility validation.
-- Fixed-seed Leiden repeats without a LUAD monkeypatch.
-- The package suite and synthetic public-workflow integration tests pass in
-  clean environments, and LUAD template call sites remain source-compatible.
-- Tahoe pins released package/dependency versions and imports no sibling
-  working copy.
+A release candidate may be tagged only when:
+
+- M0-M6 are `done` in the tracker and D1 remains explicitly `deferred`;
+- every milestone checkbox has evidence in the append-only progress log;
+- no error-severity compatibility finding or unexplained fit failure remains;
+- M6 suite, build, CI, and LUAD source-compatibility validation pass;
+- package/dependency versions resolve to reviewed immutable commits; and
+- Tahoe integration imports released artifacts, never sibling working copies.
+
+D1 requires its own later approval and is not a release blocker.
 
 ## Explicit Non-goals
 
@@ -400,7 +664,8 @@ integrated only through the normal branch update process.
   task scheduling, retry policy, DMSO eligibility, atlas-wide correction, and
   publication schemas.
 - A second count-splitting algorithm or count-split result hierarchy.
-- Arbitrary numerical DE contrasts in the first one-factor Tahoe delivery.
+- Arbitrary numerical DE contrasts in the initial generic one-factor package
+  delivery; Tahoe's final design remains deferred.
 - A production graph-free pseudobulk API before pilot evidence requires it.
 - Streaming QC before measured Tahoe access patterns are available.
 - Broad performance grids or simulation campaigns beyond focused release
