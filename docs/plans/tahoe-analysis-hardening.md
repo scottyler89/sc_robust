@@ -637,6 +637,7 @@ events and evidence; it does not redefine milestone status.
 | Date | Milestone | Event | Commit | Validation/evidence |
 | --- | --- | --- | --- | --- |
 | 2026-07-24 | PLAN | Initial audit, requester decisions, and baseline | `634bc8c`, `9c2165c`, `570b887`, `5f4e233` | baseline `38 passed`; staged diff checks passed |
+| 2026-07-24 | PLAN | Dependency tracker and provenance/SSoT audit | `dedf910` | diff, heading-spacing, and code-fence checks passed |
 
 Update protocol:
 
