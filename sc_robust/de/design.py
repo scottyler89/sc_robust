@@ -9,6 +9,13 @@ import numpy as np
 import pandas as pd
 
 from ..provenance import canonical_json, stable_identifier
+class DEFitError(RuntimeError):
+    """Raised when fitting fails after recording a JSON-safe diagnostic record."""
+
+    def __init__(self, message: str, diagnostics: Mapping[str, Any]):
+        super().__init__(message)
+        self.diagnostics = dict(diagnostics)
+
 
 
 @dataclass(frozen=True)

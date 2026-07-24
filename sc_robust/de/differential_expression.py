@@ -14,7 +14,7 @@ import matplotlib.pyplot as plt
 
 from .base import DEAnalysisResult, PseudobulkResult, load_default_gene_annotations
 from ..provenance import stable_identifier
-from .design import DesignSpec, build_design_frame, make_design_spec
+from .design import DEFitError, DesignSpec, build_design_frame, make_design_spec
 
 __all__ = [
     "prepare_deseq_dataset",
@@ -22,6 +22,7 @@ __all__ = [
     "run_cluster_vs_all",
     "run_pairwise_de",
     "run_all_pairwise_de",
+    "DEFitError",
     "DesignSpec",
 ]
 
@@ -192,7 +193,7 @@ def fit_deseq_dataset(dds: "DeseqDataSet") -> "DeseqDataSet":
     except Exception as exc:
         diagnostics.update({"status": "failed", "error_type": type(exc).__name__, "error": str(exc)})
         dds._sc_robust_diagnostics = diagnostics
-        raise
+        raise DEFitError("DESeq2 fitting failed; inspect exc.diagnostics.", diagnostics) from exc
     diagnostics.update({"status": "fit", "error": None})
     if hasattr(dds, "design_matrix"):
         matrix = dds.design_matrix
