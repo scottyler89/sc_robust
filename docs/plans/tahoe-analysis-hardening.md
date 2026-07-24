@@ -168,7 +168,7 @@ Status values are `not started`, `in progress`, `blocked`, `done`, or `deferred`
 | M2 | P0 | in progress | M0, M1 | Explicit DE design and diagnostics | commit and M2 validation output |
 | M3 | P1 | in progress | M0 | Metadata-driven pseudobulk boundaries | commit and M3 validation output |
 | M4 | P1 | in progress | M0 | Validated count-split adapter | commit and M4 validation output |
-| M5 | P1 | not started | M0 | Deterministic Leiden propagation | commit and M5 validation output |
+| M5 | P1 | in progress | M0 | Deterministic Leiden propagation | commit and M5 validation output |
 | M6 | P0 release gate | not started | M0-M5 | Integrated API, docs, CI, and compatibility review | release-candidate commit and CI URL |
 | D1 | P2 | deferred | M6 and Tahoe pilot | Streaming-friendly QC proposal | approved follow-up plan |
 
@@ -657,6 +657,7 @@ events and evidence; it does not redefine milestone status.
 | 2026-07-24 | M3 | Added joint `partition_by` boundaries, source IDs/hashes, retain-source control, and METIS advisory warnings | `1e999d9` | focused boundary/axis tests: `4 passed`; full suite before hash correction: `91 passed, 21 warnings`; acceptance review remains |
 | 2026-07-24 | M4 | Started validated count-split adapter implementation | `4677292` | cells x genes public contract, conservation, deterministic seed policy, and shared robust path |
 | 2026-07-24 | M4 | Added preflight validation, exact dense/sparse conservation, seed-failure policy, and shared `do_splits` integration | `a9804b7` | adapter/pipeline tests: `8 passed`; full suite: `94 passed, 22 warnings` |
+| 2026-07-24 | M5 | Started canonical seeded-Leiden implementation after M0 dependency gate | pending | random_state/seed alias, graph wrapper, and gene-module propagation |
 
 Update protocol:
 
