@@ -642,6 +642,7 @@ events and evidence; it does not redefine milestone status.
 | 2026-07-24 | M0 | Added canonical JSON, hash semantics, stable IDs, and immutable provenance envelopes | `a8fcaea` | `23 passed` focused; `61 passed` full suite |
 | 2026-07-24 | M0 | Added structured compatibility reports, strict policies, axis/hash checks, split conservation, and parameter validation | `2ce6162` | `43 passed` focused; `81 passed` full suite |
 | 2026-07-24 | M0 | Integrated immutable provenance envelopes and deterministic exports into pseudobulk, DE, and pathway result APIs | `44f549b` | `3 passed` focused; existing pathway/provenance tests `35 passed` |
+| 2026-07-24 | M0 | Canonicalized robust provenance, ordered AnnData axis hashes, lossless manifests, and immutable post-run diagnostics | `2b5f1c3` | `31 passed` focused; `84 passed` full suite |
 
 Update protocol:
 
