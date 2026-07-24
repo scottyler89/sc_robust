@@ -651,6 +651,7 @@ events and evidence; it does not redefine milestone status.
 | 2026-07-24 | M1 | Closed numerical, fallback, and machine-readable diagnostic acceptance criteria | `fa162e5` | first four M1 checkboxes checked; immutable production pin remains the sole open M1 gate |
 | 2026-07-24 | M1 | Pinning gate audited | pending | package metadata still has unversioned `pydeseq2`; clean fallback commit `8d1c39f` is local and not yet a resolvable published/fork pin, so M1 remains in progress |
 | 2026-07-24 | M1 | Added PyDESeq2 fallback decision record with exact commits, epsilon policy, and release-pin blocker | `84760ef` | `docs/decisions/001-pydeseq2-fallbacks.md`; immutable publication/approval remains required |
+| 2026-07-24 | M1 | External pin handoff recorded | pending | Owner: PyDESeq2 maintainer/release owner; publish or approve fork ref `8d1c39f`, then pin the resolvable URL in package metadata, LUAD, and CI |
 | 2026-07-24 | M2 | Started explicit DE design and diagnostics implementation after M0/M1 dependency audit | pending | preserve shorthand and add focused design/diagnostic tests |
 | 2026-07-24 | M2 | Added canonical formula DesignSpec, annotation-only metadata, `pairs` alias, safe worker defaults, and result design records | `ac3ae75` | `tests/test_de_design.py`: `3 passed`; full suite: `87 passed, 15 warnings`; M2 remains open for complete fit/contrast diagnostics |
 | 2026-07-24 | M2 | Added structured fit status, terminal errors, and design-matrix rank/non-finite diagnostics | `9221856` | full suite: `87 passed, 15 warnings`; per-contrast records and acceptance fixtures remain |
@@ -691,6 +692,7 @@ events and evidence; it does not redefine milestone status.
 | 2026-07-24 | M6 | Post-pathway-lineage validation | `f2f4fd1` | full suite: `106 passed, 24 warnings`; hardened dependency pin and remote CI remain open |
 | 2026-07-24 | M6 | Aligned README alias migration guidance with runtime warnings | `b6b9ba1` | handoff docs now identify deprecated aliases and replacements; dependency pin and remote CI gates remain open |
 | 2026-07-24 | M6 | Reconciled locally proven M6 acceptance criteria | `e816c65` | public examples, alias migration, and no-sibling/no-runtime-patch source audit checked; M1 dependency and remote CI criteria remain open |
+| 2026-07-24 | M6 | External CI handoff recorded | pending | Owner: sc_robust release owner; push reviewed branch, run core and DE jobs, and attach the CI URL plus resolved wheel metadata |
 
 Update protocol:
 
