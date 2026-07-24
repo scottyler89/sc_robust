@@ -427,7 +427,6 @@ def run_cluster_vs_all(
     contrast_results: Dict[str, pd.DataFrame] = {}
     contrast_diagnostics: MutableMapping[str, Mapping[str, object]] = {}
     artifacts: MutableMapping[str, object] = {}
-    contrast_diagnostics: MutableMapping[str, Mapping[str, object]] = {}
 
     for column in design_cols:
         stats_obj, results_df = results_map[column]
@@ -502,7 +501,6 @@ def run_pairwise_de(
     contrast_results: Dict[str, pd.DataFrame] = {}
     contrast_diagnostics: MutableMapping[str, Mapping[str, object]] = {}
     artifacts: MutableMapping[str, object] = {}
-    contrast_diagnostics: MutableMapping[str, Mapping[str, object]] = {}
 
     plot_dir_path = Path(plot_dir) if plot_dir is not None else None
     save_dir_path = Path(save_dir) if save_dir is not None else None

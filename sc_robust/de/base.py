@@ -134,6 +134,7 @@ class DEAnalysisResult(_ProvenanceResultMixin):
                 "design_columns": _ordered_axis_input(self.design_columns or (), domain="de.design-columns"),
                 "design": dict(self.design or {}),
                 "diagnostics": dict(self.diagnostics or {}),
+                "contrasts": dict(self.contrast_diagnostics or {}),
             },
         )
 

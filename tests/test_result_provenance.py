@@ -53,6 +53,25 @@ def test_result_parameters_and_provenance_are_immutable():
         result.provenance = None
 
 
+def test_de_contrast_diagnostics_are_reconstructable_from_provenance():
+    result = DEAnalysisResult(
+        dds=None,
+        contrast_results={"treated_vs_control": pd.DataFrame()},
+        parameters={"alpha": 0.05},
+        design={"formula": "~ 0 + condition", "columns": ["condition_control", "condition_treated"]},
+        contrast_diagnostics={
+            "treated_vs_control": {
+                "contrast_id": "de-contrast:example",
+                "vector": [-1.0, 1.0],
+                "direction": "numerator_minus_denominator",
+            }
+        },
+    )
+
+    assert result.provenance.inputs["contrasts"]["treated_vs_control"]["vector"] == (-1.0, 1.0)
+    assert result.provenance.inputs["contrasts"]["treated_vs_control"]["direction"] == "numerator_minus_denominator"
+
+
 def test_result_rejects_two_different_configuration_sources():
     envelope = DEAnalysisResult(
         dds=None,
