@@ -1,4 +1,5 @@
 from ._version import __version__
+from .compatibility import *  # noqa: F401,F403
 from .provenance import *  # noqa: F401,F403
 
 from sc_robust.sc_robust import *

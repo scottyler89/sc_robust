@@ -235,7 +235,7 @@ def hash_payload(
     )
 
 
-def _normalize_identifiers(values: Iterable[Any]) -> list[str]:
+def normalize_identifiers(values: Iterable[Any]) -> list[str]:
     if isinstance(values, (str, bytes)):
         raise TypeError("Identifier collections must not be a string or bytes value.")
     normalized = [str(value) for value in values]
@@ -265,7 +265,7 @@ def hash_ordered_ids(
 ) -> HashRecord:
     """Hash unique identifiers while preserving axis order."""
 
-    normalized = _normalize_identifiers(values)
+    normalized = normalize_identifiers(values)
     record = hash_payload(normalized, domain=domain, schema_version=schema_version)
     return replace(record, ordering="ordered", count=len(normalized))
 
@@ -278,7 +278,7 @@ def hash_membership_ids(
 ) -> HashRecord:
     """Hash unique identifiers as an order-insensitive membership set."""
 
-    normalized = sorted(_normalize_identifiers(values))
+    normalized = sorted(normalize_identifiers(values))
     record = hash_payload(normalized, domain=domain, schema_version=schema_version)
     return replace(record, ordering="sorted", count=len(normalized))
 
@@ -555,6 +555,7 @@ __all__ = [
     "hash_membership_ids",
     "hash_ordered_ids",
     "hash_payload",
+    "normalize_identifiers",
     "stable_identifier",
     "to_jsonable",
     "utc_now",
