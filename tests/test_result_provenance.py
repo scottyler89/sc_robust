@@ -38,6 +38,25 @@ def test_all_stage_results_export_one_immutable_provenance_shape():
     assert pathway.provenance.inputs["libraries"]["ordering"] == "ordered"
 
 
+def test_stage_parent_lineage_is_explicit_and_serialized():
+    root = PseudobulkResult(
+        counts=pd.DataFrame([[1]], index=["cell-1"], columns=["gene-1"]),
+        metadata=pd.DataFrame({"sample": ["sample-1"]}, index=["cell-1"]),
+    )
+    de = DEAnalysisResult(
+        dds=None, contrast_results={"A_vs_B": pd.DataFrame()},
+        parent_ids=(root.provenance.stable_id,),
+    )
+    pathway = PathwayEnrichmentResult(
+        per_contrast={"A_vs_B": pd.DataFrame()}, libraries=["library.gmt"],
+        parent_ids=(de.provenance.stable_id,),
+    )
+
+    assert de.provenance.parent_ids == (root.provenance.stable_id,)
+    assert pathway.provenance.parent_ids == (de.provenance.stable_id,)
+    assert pathway.export_provenance()["parent_ids"] == [de.provenance.stable_id]
+
+
 def test_result_parameters_and_provenance_are_immutable():
     result = DEAnalysisResult(
         dds=None,

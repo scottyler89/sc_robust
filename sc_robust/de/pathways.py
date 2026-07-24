@@ -473,6 +473,7 @@ def run_pathway_enrichment_for_clusters(
     alpha: float = 0.05,
     n_jobs: int = 0,
     backend: str = "auto",
+    parent_ids: Optional[Sequence[str]] = None,
 ) -> PathwayEnrichmentResult:
     """Compute pathway enrichment across multiple contrasts and libraries."""
     resolved_libraries = resolve_pathway_libraries(libraries, base_dir=base_dir)
@@ -490,6 +491,7 @@ def run_pathway_enrichment_for_clusters(
                 "backend": "sequential",
             },
             concatenated=pd.DataFrame(),
+            parent_ids=tuple(parent_ids or ()),
         )
 
     base_dir_path = Path(base_dir) if base_dir is not None else None
@@ -578,4 +580,5 @@ def run_pathway_enrichment_for_clusters(
             "backend": resolved_backend,
         },
         concatenated=concatenated,
+        parent_ids=tuple(parent_ids or ()),
     )

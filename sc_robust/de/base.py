@@ -124,11 +124,13 @@ class DEAnalysisResult(_ProvenanceResultMixin):
     design: Optional[Mapping[str, Any]] = None
     diagnostics: Optional[Mapping[str, Any]] = None
     contrast_diagnostics: Optional[Mapping[str, Mapping[str, Any]]] = None
+    parent_ids: Sequence[str] = field(default_factory=tuple)
     provenance: Optional[ProvenanceEnvelope] = None
 
     def __post_init__(self) -> None:
         self._initialize_provenance(
             stage="de",
+            parent_ids=self.parent_ids,
             inputs={
                 "contrast_ids": _ordered_axis_input(self.contrast_results.keys(), domain="de.contrast-axis"),
                 "design_columns": _ordered_axis_input(self.design_columns or (), domain="de.design-columns"),
@@ -217,11 +219,13 @@ class PathwayEnrichmentResult(_ProvenanceResultMixin):
     libraries: Sequence[str]
     parameters: Mapping[str, Any] = field(default_factory=dict)
     concatenated: Optional[pd.DataFrame] = None
+    parent_ids: Sequence[str] = field(default_factory=tuple)
     provenance: Optional[ProvenanceEnvelope] = None
 
     def __post_init__(self) -> None:
         self._initialize_provenance(
             stage="pathway",
+            parent_ids=self.parent_ids,
             inputs={
                 "contrast_ids": _ordered_axis_input(self.per_contrast.keys(), domain="pathway.contrast-axis"),
                 "libraries": _ordered_axis_input(self.libraries, domain="pathway.library-axis"),

@@ -170,6 +170,7 @@ def perform_de_workflow(
             significance_col=pathway_significance_col,
             alpha=pathway_alpha,
             n_jobs=pathway_n_jobs,
+            parent_ids=(cluster_vs_all.provenance.stable_id,),
         )
         if pathway_include_pairwise and pairwise_result is not None:
             pairwise_pathways = run_pathway_enrichment_for_clusters(
@@ -182,6 +183,7 @@ def perform_de_workflow(
                 significance_col=pathway_significance_col,
                 alpha=pathway_alpha,
                 n_jobs=pathway_n_jobs,
+                parent_ids=(pairwise_result.provenance.stable_id,),
             )
 
     return {

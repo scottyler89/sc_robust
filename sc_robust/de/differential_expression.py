@@ -174,6 +174,7 @@ def prepare_deseq_dataset(
         refit_cooks=refit_cooks,
         inference=inference,
     )
+    dds._sc_robust_parent_ids = (pseudobulk.provenance.stable_id,)
     dds._sc_robust_design_spec = design_spec
     dds._sc_robust_diagnostics = {
         "status": "prepared",
@@ -484,6 +485,7 @@ def run_cluster_vs_all(
         design=getattr(getattr(dds, "_sc_robust_design_spec", None), "to_dict", lambda: None)(),
         diagnostics=getattr(dds, "_sc_robust_diagnostics", {}),
         contrast_diagnostics=contrast_diagnostics,
+        parent_ids=getattr(dds, "_sc_robust_parent_ids", ()),
     )
 
 
@@ -609,6 +611,7 @@ def run_pairwise_de(
         design=getattr(getattr(dds, "_sc_robust_design_spec", None), "to_dict", lambda: None)(),
         diagnostics=getattr(dds, "_sc_robust_diagnostics", {}),
         contrast_diagnostics=contrast_diagnostics,
+        parent_ids=getattr(dds, "_sc_robust_parent_ids", ()),
     )
 
 
