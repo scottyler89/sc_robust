@@ -660,7 +660,7 @@ events and evidence; it does not redefine milestone status.
 | 2026-07-24 | M5 | Started canonical seeded-Leiden implementation after M0 dependency gate | `b26c750` | random_state/seed alias, graph wrapper, and gene-module propagation |
 | 2026-07-24 | M5 | Added deterministic Leiden seed alias, workflow propagation, and dependency-version provenance | `c6d09f3` | focused seed/graph/gene-module tests: `12 passed`; full suite: `96 passed, 22 warnings` |
 | 2026-07-24 | M6 | Started release integration audit after M0-M5 implementation increments | `8a40926` | public exports, docs, build/CI, dependency pins, and source compatibility remain to audit |
-| 2026-07-24 | M6 | Added public root exports, handoff tutorials, and CI package-build validation | pending | root import smoke passed; full suite: `96 passed, 22 warnings`; `python -m build` produced sdist and wheel; release pin/acceptance gates remain |
+| 2026-07-24 | M6 | Added public root exports, handoff tutorials, and CI package-build validation | `1febfc2` | root import smoke passed; full suite: `96 passed, 22 warnings`; `python -m build` produced sdist and wheel; release pin/acceptance gates remain |
 
 Update protocol:
 
