@@ -13,6 +13,7 @@ import pandas as pd
 import matplotlib.pyplot as plt
 
 from .base import DEAnalysisResult, PseudobulkResult, load_default_gene_annotations
+from ..provenance import stable_identifier
 from .design import DesignSpec, build_design_frame, make_design_spec
 
 __all__ = [
@@ -246,6 +247,28 @@ def _run_single_contrast(
     return ds
 
 
+def _contrast_record(key: str, vector: np.ndarray, design_cols: Sequence[str], results_df: pd.DataFrame, *, numerator: Sequence[str], denominator: Sequence[str], reference: Optional[str] = None) -> dict[str, object]:
+    """Build one canonical, JSON-safe contrast diagnostic record."""
+    payload = {"key": key, "vector": [float(value) for value in vector], "design_columns": list(design_cols)}
+    nonfinite = {}
+    for column in ("log2FoldChange", "lfcSE", "stat", "pvalue", "padj"):
+        if column in results_df:
+            nonfinite[column] = int((~np.isfinite(pd.to_numeric(results_df[column], errors="coerce"))).sum())
+    return {
+        "contrast_id": stable_identifier("de-contrast", payload),
+        "key": key,
+        "numerator": list(numerator),
+        "denominator": list(denominator),
+        "reference": reference,
+        "coefficient_labels": list(design_cols),
+        "vector": payload["vector"],
+        "direction": "numerator_minus_denominator",
+        "status": "ok",
+        "nonfinite": nonfinite,
+    }
+
+
+
 def _standardize_gene_annotations(df: pd.DataFrame) -> pd.DataFrame:
     annot = df.copy()
     rename_map = {
@@ -389,12 +412,18 @@ def run_cluster_vs_all(
                 results_map[col] = (stats_obj, results_df)
 
     contrast_results: Dict[str, pd.DataFrame] = {}
+    contrast_diagnostics: MutableMapping[str, Mapping[str, object]] = {}
     artifacts: MutableMapping[str, object] = {}
+    contrast_diagnostics: MutableMapping[str, Mapping[str, object]] = {}
 
     for column in design_cols:
         stats_obj, results_df = results_map[column]
         contrast_results[column] = results_df
         artifacts[column] = stats_obj
+        contrast_diagnostics[column] = _contrast_record(
+            column, dict(tasks)[column], design_cols, results_df,
+            numerator=[column], denominator=[item for item in design_cols if item != column],
+        )
 
         if plot_dir_path is not None:
             ma_obj = stats_obj.plot_MA()
@@ -429,6 +458,7 @@ def run_cluster_vs_all(
         artifacts=artifacts,
         design=getattr(getattr(dds, "_sc_robust_design_spec", None), "to_dict", lambda: None)(),
         diagnostics=getattr(dds, "_sc_robust_diagnostics", {}),
+        contrast_diagnostics=contrast_diagnostics,
     )
 
 
@@ -457,7 +487,9 @@ def run_pairwise_de(
     if not pairs:
         raise ValueError("At least one pair is required.")
     contrast_results: Dict[str, pd.DataFrame] = {}
+    contrast_diagnostics: MutableMapping[str, Mapping[str, object]] = {}
     artifacts: MutableMapping[str, object] = {}
+    contrast_diagnostics: MutableMapping[str, Mapping[str, object]] = {}
 
     plot_dir_path = Path(plot_dir) if plot_dir is not None else None
     save_dir_path = Path(save_dir) if save_dir is not None else None
@@ -510,6 +542,10 @@ def run_pairwise_de(
         stats_obj, results_df = results_map[key]
         contrast_results[key] = results_df
         artifacts[key] = stats_obj
+        contrast_diagnostics[key] = _contrast_record(
+            key, dict((f"{left}_vs_{right}", vec) for left, right, vec in tasks)[key], design_cols, results_df,
+            numerator=[cluster1], denominator=[cluster2],
+        )
 
         if plot_dir_path is not None:
             ma_obj = stats_obj.plot_MA()
@@ -542,6 +578,7 @@ def run_pairwise_de(
         artifacts=artifacts,
         design=getattr(getattr(dds, "_sc_robust_design_spec", None), "to_dict", lambda: None)(),
         diagnostics=getattr(dds, "_sc_robust_diagnostics", {}),
+        contrast_diagnostics=contrast_diagnostics,
     )
 
 
