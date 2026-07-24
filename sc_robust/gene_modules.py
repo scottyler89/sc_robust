@@ -5,11 +5,13 @@ import json
 import logging
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Dict, Iterable, Iterator, List, Optional, Sequence, Tuple, Union
+from typing import Any, Dict, Iterable, Iterator, List, Mapping, Optional, Sequence, Tuple, Union
 
 import numpy as np
 import pandas as pd
 import scipy.sparse as sp
+
+from .provenance import canonical_json
 
 logger = logging.getLogger(__name__)
 
@@ -17,8 +19,15 @@ _DEFAULT_EDGE_WEIGHT_EPS = 1e-6
 _DEFAULT_EDGE_WEIGHT_MIN = 1e-3
 
 
+def _report_json_value(value: Any) -> Any:
+    if isinstance(value, Mapping):
+        return {str(key): _report_json_value(item) for key, item in value.items()}
+    if isinstance(value, (list, tuple)):
+        return [_report_json_value(item) for item in value]
+    return value
+
 def _write_report_json(out_path: Path, payload: Dict[str, Any]) -> None:
-    out_path.write_text(json.dumps(payload, indent=2, sort_keys=True, default=str), encoding="utf-8")
+    out_path.write_text(canonical_json(_report_json_value(payload), indent=2), encoding="utf-8")
 
 
 def _edge_weight_from_excess(
@@ -1558,7 +1567,7 @@ def _write_module_stats_json(
             "n_negative_edges": int(len(negative_edges)),
         },
     }
-    out_path.write_text(json.dumps(payload, indent=2, sort_keys=True, default=str), encoding="utf-8")
+    out_path.write_text(canonical_json(_report_json_value(payload), indent=2), encoding="utf-8")
 
 
 def summarize_gene_module_antagonism(
