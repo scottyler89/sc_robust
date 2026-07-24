@@ -539,3 +539,87 @@ Notes for handoff
 - Make sure the gene identifier column matches the namespace used by the GMT file, typically HGNC-style symbols in `gene_name`.
 - If you already have external DE results, prefer `run_pathway_enrichment(...)` or `run_pathway_enrichment_for_clusters(...)` over `perform_de_workflow(...)`.
 - The current `perform_de_workflow(...)` helper hardcodes `stat_col="stat"`, so it is not the right interface for heterogeneous external score columns.
+
+
+Tahoe Handoff APIs
+------------------
+
+The public contracts below use cells x genes counts and preserve reconstructable
+provenance. The examples are synthetic API templates; they do not require or
+reanalyze the LUAD dataset.
+
+Validated count splitting
+
+```python
+from sc_robust.count_split_adapter import split_counts
+
+train, validation = split_counts(
+    counts_cells_by_genes,
+    proportions=[0.5, 0.5],
+    seed=7,
+)
+```
+
+The adapter rejects non-finite, negative, non-integral, malformed, or invalid
+proportion inputs before calling `multi_split`, and checks exact element-wise
+conservation. Reproducibility means the same seed and the same ordered matrix;
+it does not claim order-invariance. Sparse inputs return sparse outputs.
+
+Metadata-driven pseudobulk boundaries
+
+```python
+from sc_robust.de import build_pseudobulk
+
+result = build_pseudobulk(
+    graph,
+    counts_cells_by_genes,
+    mode="topology",
+    cell_metadata=adata.obs,
+    cell_ids=adata.obs_names,
+    partition_by=["sample", "cluster"],
+    retain_source_cells=True,
+)
+```
+
+`partition_by` forms exact joint metadata keys and reuses the existing METIS
+builder independently per key. Results include `source_cell_ids`, a sorted
+membership hash, boundary factors, mode, seed, ID source, and source-list
+retention. `cells_per_pb` is advisory; inexact METIS sizes emit a warning.
+
+Explicit DE design and selected contrasts
+
+```python
+from sc_robust.de import prepare_deseq_dataset, run_pairwise_de
+
+dds = prepare_deseq_dataset(
+    result,
+    design="~ 0 + condition",
+    annotation_columns=["sample", "cluster"],
+    inference_kwargs={"n_cpus": 4},
+)
+fit_deseq_dataset(dds)
+de = run_pairwise_de(dds, pairs=[("condition_treated", "condition_control")])
+print(de.export_provenance())
+```
+
+Formula terms determine the model; annotation columns are retained for reporting
+and are not silently added. `design_columns` remains the legacy no-intercept
+shorthand. `cluster_pairs` remains a compatibility alias for `pairs`, but both
+arguments cannot be supplied together. Fit and contrast diagnostics, stable IDs,
+resolved worker counts, and terminal failures are machine-readable.
+
+Leiden seed control
+
+```python
+from sc_robust.utils import single_graph_and_leiden
+graph, labels = single_graph_and_leiden(embedding, random_state=11)
+```
+
+Use `random_state` canonically; `seed` is a conflict-checked compatibility alias.
+
+Provenance and SSoT
+
+Treat each result provenance envelope as the single source of truth for inputs,
+configuration, identifiers, dependency versions, execution settings, and artifact
+identity. Export it with `result.provenance_json()` or `result.export_provenance()`
+rather than reconstructing configuration from mutable Python objects.
