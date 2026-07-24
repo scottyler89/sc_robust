@@ -603,9 +603,11 @@ print(de.export_provenance())
 ```
 
 Formula terms determine the model; annotation columns are retained for reporting
-and are not silently added. `design_columns` remains the legacy no-intercept
-shorthand. `cluster_pairs` remains a compatibility alias for `pairs`, but both
-arguments cannot be supplied together. Fit and contrast diagnostics, stable IDs,
+and are not silently added. `design_columns` remains a legacy no-intercept shorthand and emits a
+`DeprecationWarning`; use an explicit `design` formula instead.
+`metadata_columns` is a deprecated alias for `annotation_columns`, and
+`cluster_pairs` is a deprecated alias for `pairs`; both aliases emit actionable
+`DeprecationWarning`s. The two pair arguments cannot be supplied together. Fit and contrast diagnostics, stable IDs,
 resolved worker counts, and terminal failures are machine-readable.
 
 Leiden seed control
