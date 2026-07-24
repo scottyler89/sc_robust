@@ -589,7 +589,7 @@ retention. `cells_per_pb` is advisory; inexact METIS sizes emit a warning.
 Explicit DE design and selected contrasts
 
 ```python
-from sc_robust.de import prepare_deseq_dataset, run_pairwise_de
+from sc_robust.de import prepare_deseq_dataset, fit_deseq_dataset, run_pairwise_de
 
 dds = prepare_deseq_dataset(
     result,

@@ -181,6 +181,13 @@ def build_pseudobulk(
                 for source in subgroup_meta["source_cell_ids"]
             ]
             subgroup_meta["boundary_key"] = "|".join(boundary_key)
+            subgroup_meta["partition_factors"] = "|".join(factors)
+            subgroup_meta["partition_values"] = "|".join(boundary_key)
+            subgroup_meta["mode"] = mode
+            subgroup_meta["seed"] = random_state
+            subgroup_meta["id_source"] = "explicit" if cell_ids is not None else "metadata_index" if cell_metadata is not None else "positional_legacy"
+            subgroup_meta["retain_source_cells"] = retain_source_cells
+            subgroup_meta["source_cell_count"] = subgroup_meta["source_cells"].map(len)
             for factor, value in zip(factors, boundary_key):
                 subgroup_meta[factor] = value
             subgroup_meta.index = [
@@ -249,6 +256,14 @@ def build_pseudobulk(
     pb_meta["source_cell_ids"] = [
         [resolved_cell_ids[int(cell)] for cell in source] for source in pb_meta["source_cells"]
     ]
+    pb_meta["source_cell_count"] = pb_meta["source_cells"].map(len)
+    pb_meta["partition_factors"] = ""
+    pb_meta["partition_values"] = ""
+    pb_meta["boundary_key"] = ""
+    pb_meta["mode"] = mode
+    pb_meta["seed"] = random_state
+    pb_meta["id_source"] = "explicit" if cell_ids is not None else "metadata_index" if cell_metadata is not None else "positional_legacy"
+    pb_meta["retain_source_cells"] = retain_source_cells
     pb_meta["source_cell_hash"] = [
         hash_membership_ids(source, domain="pseudobulk.source-cells").to_dict() for source in pb_meta["source_cell_ids"]
     ]
