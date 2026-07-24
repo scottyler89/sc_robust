@@ -660,13 +660,14 @@ events and evidence; it does not redefine milestone status.
 | 2026-07-24 | M3 | Added explicit source count, factor/value, mode, seed, ID-source, and retention metadata fields | `a24bc95` | focused boundary/axis tests: `4 passed`; full suite plus build rerun successfully |
 | 2026-07-24 | M3 | Corrected advisory warning to include exact boundary keys and proved every source cell is assigned exactly once | `a82f099` | boundary tests: `2 passed`; exact source-ID union and uniqueness asserted |
 | 2026-07-24 | M3 | Added sparse-count support and integer-factor fixture; normalized sparse metadata weights | `7adedab` | boundary/count-split focused tests: `7 passed`; all eligible source IDs remain unique |
+| 2026-07-24 | M3 | Closed M3 acceptance criteria after exact boundary, warning, sparse, and integer-factor validation | `e715e0d` | all M3 checkboxes checked; M3 status done |
 | 2026-07-24 | M4 | Started validated count-split adapter implementation | `4677292` | cells x genes public contract, conservation, deterministic seed policy, and shared robust path |
 | 2026-07-24 | M4 | Added preflight validation, exact dense/sparse conservation, seed-failure policy, and shared `do_splits` integration | `a9804b7` | adapter/pipeline tests: `8 passed`; full suite: `94 passed, 22 warnings` |
 | 2026-07-24 | M4 | Added explicit negative-count and seed-bridge failure fixtures | `35e8c61` | adapter tests: `4 passed`; deterministic, dense/sparse, malformed, and validation paths covered |
-| 2026-07-24 | M4 | Closed M4 acceptance criteria after adapter/pipeline validation | pending | all M4 checkboxes checked; full release gate remains open |
+| 2026-07-24 | M4 | Closed M4 acceptance criteria after adapter/pipeline validation | `e715e0d` | all M4 checkboxes checked; full release gate remains open |
 | 2026-07-24 | M5 | Started canonical seeded-Leiden implementation after M0 dependency gate | `b26c750` | random_state/seed alias, graph wrapper, and gene-module propagation |
 | 2026-07-24 | M5 | Added deterministic Leiden seed alias, workflow propagation, and dependency-version provenance | `c6d09f3` | focused seed/graph/gene-module tests: `12 passed`; full suite: `96 passed, 22 warnings` |
-| 2026-07-24 | M5 | Closed M5 acceptance criteria after seeded graph and LUAD source-pattern audit | pending | all M5 checkboxes checked; no LUAD data execution performed |
+| 2026-07-24 | M5 | Closed M5 acceptance criteria after seeded graph and LUAD source-pattern audit | `e715e0d` | all M5 checkboxes checked; no LUAD data execution performed |
 | 2026-07-24 | M6 | Started release integration audit after M0-M5 implementation increments | `8a40926` | public exports, docs, build/CI, dependency pins, and source compatibility remain to audit |
 | 2026-07-24 | M6 | Added public root exports, handoff tutorials, and CI package-build validation | `1febfc2` | root import smoke passed; full suite: `96 passed, 22 warnings`; `python -m build` produced sdist and wheel; release pin/acceptance gates remain |
 | 2026-07-24 | M6 | Corrected README imports and completed M3 provenance metadata fields | `a24bc95` | final full suite: `96 passed, 22 warnings`; final `python -m build` succeeded; release pin/acceptance gates remain |
