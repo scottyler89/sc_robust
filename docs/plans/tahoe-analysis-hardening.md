@@ -403,15 +403,15 @@ fail-fast callers; orchestration may convert it into a failed result.
 
 #### Acceptance criteria
 
-- [ ] A generic categorical condition fixture produces the intended explicit
+- [x] A generic categorical condition fixture produces the intended explicit
   no-intercept design; Tahoe-specific encoding remains undecided.
-- [ ] Annotation-only columns remain outside the model and requested formula
+- [x] Annotation-only columns remain outside the model and requested formula
   terms enter it.
-- [ ] One fit evaluates only requested `pairs`; `cluster_pairs` remains a tested
+- [x] One fit evaluates only requested `pairs`; `cluster_pairs` remains a tested
   compatibility alias.
-- [ ] Formula, coefficient mapping, reference, design matrix, contrast vector,
+- [x] Formula, coefficient mapping, reference, design matrix, contrast vector,
   direction, and stable IDs serialize from one canonical design snapshot.
-- [ ] Success, filtering, rank failure, fallback, and terminal failure emit
+- [x] Success, filtering, rank failure, fallback, and terminal failure emit
   stable diagnostics; resolved CPU settings are visible and non-nested.
 
 #### Validation
@@ -658,6 +658,7 @@ events and evidence; it does not redefine milestone status.
 | 2026-07-24 | M2 | Added public `DEFitError` with JSON-safe terminal diagnostics and failure fixture | `ec6896f` | focused design/diagnostic tests: `5 passed`; full suite: `89 passed, 15 warnings`; filtering/rank/fallback acceptance coverage remains |
 | 2026-07-24 | M2 | Integrated per-fit PyDESeq2 fallback records and convergence counts | `4f8d6cf` | diagnostic tests: `3 passed`; full suite: `97 passed, 22 warnings`; numerical/rank/filter acceptance remains |
 | 2026-07-24 | M2 | Added annotation, rank, filtering, requested-pair, fallback, and terminal-failure fixtures | `02a5be9` | design/diagnostic tests: `9 passed`; full suite: `102 passed, 24 warnings`; M1 dependency and ordinary numerical comparison remain |
+| 2026-07-24 | M2 | Closed all local M2 acceptance criteria, including canonical contrast provenance reconstruction | `528f240` | focused design/diagnostic/provenance tests: `13 passed`; M2 remains in progress only because its declared M1 dependency is not release-closed |
 | 2026-07-24 | M3 | Started metadata-driven pseudobulk boundary implementation after M0 dependency gate | `f9e6d74` | reuse METIS builder per exact joint boundary and preserve source-cell provenance |
 | 2026-07-24 | M3 | Added joint `partition_by` boundaries, source IDs/hashes, retain-source control, and METIS advisory warnings | `1e999d9` | focused boundary/axis tests: `4 passed`; full suite before hash correction: `91 passed, 21 warnings`; acceptance review remains |
 | 2026-07-24 | M3 | Added explicit source count, factor/value, mode, seed, ID-source, and retention metadata fields | `a24bc95` | focused boundary/axis tests: `4 passed`; full suite plus build rerun successfully |
@@ -677,6 +678,7 @@ events and evidence; it does not redefine milestone status.
 | 2026-07-24 | M6 | Corrected README imports and completed M3 provenance metadata fields | `a24bc95` | final full suite: `96 passed, 22 warnings`; final `python -m build` succeeded; release pin/acceptance gates remain |
 | 2026-07-24 | M6 | Final release validation after M3-M5 closure | `c1b2506` | full suite: `99 passed, 24 warnings`; `python -m build` succeeded; M1/M2 acceptance and immutable pin gates remain |
 | 2026-07-24 | M6 | Final validation after M2 acceptance fixtures | `82a67d1` | full suite: `102 passed, 24 warnings`; prior package build succeeded; M1 pin and M2/M6 release gates remain |
+| 2026-07-24 | M6 | Corrected CI workflow test/build step structure | `d88a332` | workflow now has separate test and build steps; clean CI run and immutable DE dependency pin remain open |
 
 Update protocol:
 
