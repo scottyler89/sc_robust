@@ -653,7 +653,8 @@ events and evidence; it does not redefine milestone status.
 | 2026-07-24 | M2 | Added structured fit status, terminal errors, and design-matrix rank/non-finite diagnostics | `9221856` | full suite: `87 passed, 15 warnings`; per-contrast records and acceptance fixtures remain |
 | 2026-07-24 | M2 | Added stable per-contrast IDs, vectors, direction, labels, and non-finite result counts | `191c731` | full suite: `87 passed, 15 warnings`; dedicated diagnostic fixtures remain |
 | 2026-07-24 | M2 | Added public `DEFitError` with JSON-safe terminal diagnostics and failure fixture | `ec6896f` | focused design/diagnostic tests: `5 passed`; full suite: `89 passed, 15 warnings`; filtering/rank/fallback acceptance coverage remains |
-| 2026-07-24 | M3 | Started metadata-driven pseudobulk boundary implementation after M0 dependency gate | pending | reuse METIS builder per exact joint boundary and preserve source-cell provenance |
+| 2026-07-24 | M3 | Started metadata-driven pseudobulk boundary implementation after M0 dependency gate | `f9e6d74` | reuse METIS builder per exact joint boundary and preserve source-cell provenance |
+| 2026-07-24 | M3 | Added joint `partition_by` boundaries, source IDs/hashes, retain-source control, and METIS advisory warnings | pending | focused boundary/axis tests: `4 passed`; full suite before hash correction: `91 passed, 21 warnings`; acceptance review remains |
 
 Update protocol:
 

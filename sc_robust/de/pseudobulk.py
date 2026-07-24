@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from typing import Any, Mapping, Optional, Sequence
+import warnings
 
 import numpy as np
 import pandas as pd
@@ -11,6 +12,7 @@ from scipy.sparse import coo_matrix
 import matplotlib.pyplot as plt
 
 from .base import PseudobulkResult
+from ..provenance import hash_membership_ids
 from sc_robust.process_de_test_split import prep_sample_pseudobulk
 
 __all__ = [
@@ -85,6 +87,9 @@ def build_pseudobulk(
     gene_ids: Optional[Sequence[str]] = None,
     coords: Optional[np.ndarray] = None,
     cell_metadata: Optional[pd.DataFrame] = None,
+    partition_by: Optional[str | Sequence[str]] = None,
+    cell_ids: Optional[Sequence[str]] = None,
+    retain_source_cells: bool = True,
     random_state: Optional[int] = 123456,
     expand_proportions: bool = True,
 ) -> PseudobulkResult:
@@ -120,6 +125,96 @@ def build_pseudobulk(
     sample_arr = np.asarray(sample_labels) if sample_labels is not None else None
     if cluster_arr is not None and len(cluster_arr) != n_cells:
         raise ValueError("cluster_labels must match number of cells.")
+    if cell_metadata is not None:
+        if len(cell_metadata) != n_cells:
+            raise ValueError("cell_metadata must have one row per graph cell.")
+        if cell_metadata.index.has_duplicates:
+            raise ValueError("cell_metadata index must contain unique cell IDs.")
+    if cell_ids is None:
+        resolved_cell_ids = [str(value) for value in (cell_metadata.index if cell_metadata is not None else range(n_cells))]
+    else:
+        if len(cell_ids) != n_cells:
+            raise ValueError("cell_ids must match the number of graph cells.")
+        resolved_cell_ids = [str(value) for value in cell_ids]
+    if len(set(resolved_cell_ids)) != n_cells:
+        raise ValueError("cell_ids must be unique.")
+    if partition_by is not None:
+        if cell_metadata is None:
+            raise ValueError("partition_by requires cell_metadata with named factors.")
+        factors = [partition_by] if isinstance(partition_by, str) else list(partition_by)
+        if not factors or any(not isinstance(factor, str) or not factor for factor in factors):
+            raise ValueError("partition_by must contain one or more non-empty metadata column names.")
+        missing = [factor for factor in factors if factor not in cell_metadata.columns]
+        if missing:
+            raise KeyError(f"Partition factors not found in cell_metadata: {missing}")
+        boundary_values = cell_metadata.loc[:, factors]
+        if boundary_values.isna().any().any():
+            raise ValueError("partition_by factors must not contain null values.")
+        groups = {}
+        for position, values in enumerate(boundary_values.itertuples(index=False, name=None)):
+            groups.setdefault(tuple(str(value) for value in values), []).append(position)
+        grouped_counts = []
+        grouped_metadata = []
+        for boundary_key in sorted(groups):
+            positions = np.asarray(groups[boundary_key], dtype=int)
+            subgroup = build_pseudobulk(
+                graph.tocsr()[positions][:, positions].tocoo(),
+                counts_matrix[positions],
+                mode=mode, cells_per_pb=cells_per_pb,
+                cluster_labels=None if cluster_arr is None else cluster_arr[positions],
+                sample_labels=None if sample_arr is None else sample_arr[positions],
+                gene_ids=gene_ids, coords=None if coords is None else coords[positions],
+                cell_metadata=cell_metadata.iloc[positions].copy(),
+                random_state=random_state, expand_proportions=expand_proportions,
+                cell_ids=[resolved_cell_ids[position] for position in positions],
+                retain_source_cells=True,
+            )
+            subgroup_meta = subgroup.metadata.copy()
+            subgroup_counts = subgroup.counts.copy()
+            local_sources = subgroup_meta["source_cells"].tolist()
+            subgroup_meta["source_cells"] = [
+                [resolved_cell_ids[positions[int(local)]] for local in source] for source in local_sources
+            ]
+            subgroup_meta["source_cell_ids"] = subgroup_meta["source_cells"]
+            subgroup_meta["source_cell_hash"] = [
+                hash_membership_ids(source, domain="pseudobulk.source-cells").to_dict()
+                for source in subgroup_meta["source_cell_ids"]
+            ]
+            subgroup_meta["boundary_key"] = "|".join(boundary_key)
+            for factor, value in zip(factors, boundary_key):
+                subgroup_meta[factor] = value
+            subgroup_meta.index = [
+                f"{subgroup_meta.iloc[index]["boundary_key"]}__pb_{index}"
+                for index in range(len(subgroup_meta))
+            ]
+            subgroup_counts.index = subgroup_meta.index
+            grouped_counts.append(subgroup_counts)
+            grouped_metadata.append(subgroup_meta)
+        combined_meta = pd.concat(grouped_metadata, axis=0)
+        combined_counts = pd.concat(grouped_counts, axis=0)
+        observed_sizes = combined_meta["cell_n"].astype(int)
+        if (observed_sizes != cells_per_pb).any():
+            warnings.warn(
+                f"METIS target cells_per_pb={cells_per_pb} was advisory for partition boundaries "
+                f"with observed size range {observed_sizes.min()}-{observed_sizes.max()}.",
+                UserWarning, stacklevel=2,
+            )
+        if not retain_source_cells:
+            combined_meta = combined_meta.drop(columns=["source_cells", "source_cell_ids"], errors="ignore")
+        return PseudobulkResult(
+            counts=combined_counts,
+            metadata=combined_meta,
+            parameters={
+                "mode": mode, "cells_per_pb": cells_per_pb, "random_state": random_state,
+                "n_cells": n_cells, "partition_by": factors, "partition_levels": [list(key) for key in sorted(groups)],
+        "partition_by": None,
+        "cell_id_source": "explicit" if cell_ids is not None else "metadata_index" if cell_metadata is not None else "positional_legacy",
+        "retain_source_cells": retain_source_cells,
+                "cell_id_source": "explicit" if cell_ids is not None else "metadata_index" if cell_metadata is not None else "positional_legacy",
+                "retain_source_cells": retain_source_cells,
+            },
+            graph_summary={"partitioned": True, "boundary_groups": len(groups)},
+        )
     if sample_arr is not None and len(sample_arr) != n_cells:
         raise ValueError("sample_labels must match number of cells.")
 
@@ -151,6 +246,12 @@ def build_pseudobulk(
 
     cell_totals = _sum_counts_per_cell(counts_matrix)
     pb_meta = pb_meta.copy()
+    pb_meta["source_cell_ids"] = [
+        [resolved_cell_ids[int(cell)] for cell in source] for source in pb_meta["source_cells"]
+    ]
+    pb_meta["source_cell_hash"] = [
+        hash_membership_ids(source, domain="pseudobulk.source-cells").to_dict() for source in pb_meta["source_cell_ids"]
+    ]
     cluster_weight_dicts = []
     sample_weight_dicts = []
     for _, row in pb_meta.iterrows():
@@ -175,7 +276,12 @@ def build_pseudobulk(
         "cells_per_pb": cells_per_pb,
         "random_state": random_state,
         "n_cells": n_cells,
+        "partition_by": None,
+        "cell_id_source": "explicit" if cell_ids is not None else "metadata_index" if cell_metadata is not None else "positional_legacy",
+        "retain_source_cells": retain_source_cells,
     }
+    if not retain_source_cells:
+        pb_meta = pb_meta.drop(columns=["source_cells", "source_cell_ids"], errors="ignore")
     graph_summary = {
         "edges_initial": graph.nnz,
         "edges_filtered": filtered_graph.nnz,
