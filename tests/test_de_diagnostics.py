@@ -1,3 +1,4 @@
+import pytest
 import numpy as np
 import pandas as pd
 
@@ -85,3 +86,43 @@ def test_fit_success_collects_fallback_records(monkeypatch):
     de.fit_deseq_dataset(dds)
     assert dds._sc_robust_diagnostics["fallback_count"] == 2
     assert dds._sc_robust_diagnostics["fallbacks"][0]["irls_ridge_applied"]
+
+
+def test_filtering_failure_is_explicit(monkeypatch):
+    from sc_robust.de import differential_expression as de
+    from sc_robust.de.base import PseudobulkResult
+
+    class FakeDDS:
+        def __init__(self, **kwargs): pass
+    class FakeInference:
+        def __init__(self, **kwargs): pass
+    monkeypatch.setattr(de, "_import_pydeseq2", lambda: (FakeDDS, None, FakeInference))
+    counts = pd.DataFrame([[1, 1], [1, 1]], columns=["g1", "g2"], index=["pb1", "pb2"])
+    metadata = pd.DataFrame({"condition": ["a", "b"]}, index=counts.index)
+    result = PseudobulkResult(counts=counts, metadata=metadata)
+    try:
+        de.prepare_deseq_dataset(result, design="~ 0 + condition", min_counts=100, min_variance=None)
+    except ValueError as exc:
+        assert "No genes remain" in str(exc)
+    else:
+        raise AssertionError("empty filtered fit did not fail")
+
+
+def test_pairs_evaluates_only_requested_pair_and_alias_conflict(monkeypatch):
+    from sc_robust.de import differential_expression as de
+
+    class Stats:
+        def __init__(self):
+            self.results_df = pd.DataFrame({"log2FoldChange": [1.0], "pvalue": [0.1], "padj": [0.1]}, index=["ENSG00000141510"])
+        def plot_MA(self): return None
+    dds = type("DDS", (), {"obsm": {"design_matrix": pd.DataFrame(np.eye(3), columns=["a", "b", "c"])}})()
+    calls = []
+    def fake_run(dds, contrast, **kwargs):
+        calls.append(np.asarray(contrast).tolist())
+        return Stats()
+    monkeypatch.setattr(de, "_run_single_contrast", fake_run)
+    result = de.run_pairwise_de(dds, pairs=[("a", "b")], n_jobs=1)
+    assert list(result.contrast_results) == ["a_vs_b"]
+    assert len(calls) == 1
+    with pytest.raises(ValueError, match="either pairs or cluster_pairs"):
+        de.run_pairwise_de(dds, pairs=[("a", "b")], cluster_pairs=[("a", "b")])

@@ -20,6 +20,7 @@ def test_explicit_no_intercept_categorical_design_is_canonical():
         reference=reference,
     )
     assert list(design.columns) == ["condition_control", "condition_treated"]
+    assert "batch" not in design.columns
     assert spec.reference == "control"
     assert spec.rank == 2
     assert spec.shape == (4, 2)
@@ -54,3 +55,13 @@ def test_missing_term_and_null_term_fail_strictly():
         assert "null" in str(exc)
     else:
         raise AssertionError("null design term did not fail")
+
+
+def test_rank_deficient_formula_fails_before_fit():
+    metadata = pd.DataFrame({"condition": ["a", "b", "a", "b"], "duplicate": ["a", "b", "a", "b"]})
+    try:
+        build_design_frame(metadata, formula="~ 0 + condition + duplicate")
+    except ValueError as exc:
+        assert "rank deficient" in str(exc)
+    else:
+        raise AssertionError("rank-deficient design did not fail")
