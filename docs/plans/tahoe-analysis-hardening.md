@@ -651,7 +651,7 @@ events and evidence; it does not redefine milestone status.
 | 2026-07-24 | M2 | Started explicit DE design and diagnostics implementation after M0/M1 dependency audit | pending | preserve shorthand and add focused design/diagnostic tests |
 | 2026-07-24 | M2 | Added canonical formula DesignSpec, annotation-only metadata, `pairs` alias, safe worker defaults, and result design records | `ac3ae75` | `tests/test_de_design.py`: `3 passed`; full suite: `87 passed, 15 warnings`; M2 remains open for complete fit/contrast diagnostics |
 | 2026-07-24 | M2 | Added structured fit status, terminal errors, and design-matrix rank/non-finite diagnostics | `9221856` | full suite: `87 passed, 15 warnings`; per-contrast records and acceptance fixtures remain |
-| 2026-07-24 | M2 | Added stable per-contrast IDs, vectors, direction, labels, and non-finite result counts | pending | full suite: `87 passed, 15 warnings`; dedicated diagnostic fixtures remain |
+| 2026-07-24 | M2 | Added stable per-contrast IDs, vectors, direction, labels, and non-finite result counts | `191c731` | full suite: `87 passed, 15 warnings`; dedicated diagnostic fixtures remain |
 
 Update protocol:
 
