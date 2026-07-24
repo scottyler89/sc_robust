@@ -163,7 +163,7 @@ Status values are `not started`, `in progress`, `blocked`, `done`, or `deferred`
 
 | ID | Priority | Status | Depends on | Deliverable | Completion evidence |
 | --- | --- | --- | --- | --- | --- |
-| M0 | P0 | not started | none | Provenance, SSoT, compatibility foundation | commit and M0 validation output |
+| M0 | P0 | in progress | none | Provenance, SSoT, compatibility foundation | commit and M0 validation output |
 | M1 | P0 | not started | none | Reviewed PyDESeq2 safeguards | immutable commit and numerical report |
 | M2 | P0 | not started | M0, M1 | Explicit DE design and diagnostics | commit and M2 validation output |
 | M3 | P1 | not started | M0 | Metadata-driven pseudobulk boundaries | commit and M3 validation output |
@@ -638,6 +638,7 @@ events and evidence; it does not redefine milestone status.
 | --- | --- | --- | --- | --- |
 | 2026-07-24 | PLAN | Initial audit, requester decisions, and baseline | `634bc8c`, `9c2165c`, `570b887`, `5f4e233` | baseline `38 passed`; staged diff checks passed |
 | 2026-07-24 | PLAN | Dependency tracker and provenance/SSoT audit | `dedf910` | diff, heading-spacing, and code-fence checks passed |
+| 2026-07-24 | M0 | Started provenance, SSoT, and compatibility foundation | pending | clean `feature/tahoe-hardening` worktree |
 
 Update protocol:
 
