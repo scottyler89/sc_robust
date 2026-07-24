@@ -108,6 +108,43 @@ is provided for naturally tabular findings and per-contrast diagnostics.
 Fitted PyDESeq2 objects may remain attached for interactive work, but a batch
 runner must not need to pickle or inspect them to audit a result.
 
+## Requester Decisions Needed
+
+The following answers should be recorded before the affected workstream is
+considered production-ready. Only the first two block initial implementation;
+the others have safe provisional defaults but affect scientific policy or
+backward compatibility.
+
+1. What exact PyDESeq2 artifact produced the successful LUAD sparse fits: an
+   environment lock, wheel, container digest, fork commit, or archived source?
+   Please also identify one known successful sparse fit that can become a
+   regression fixture or numerical reference.
+2. What was the intended statistical behavior of the local ridge changes, and
+   who will approve the fallback trigger, penalty, terminal-failure policy, and
+   numerical tolerances? The current dirty checkout is not executable evidence
+   of that behavior.
+3. What is Tahoe's canonical hard pseudobulk boundary key? Confirm whether it
+   is well, sample, or a composite key, and specify what to do when a boundary
+   has too few cells for the requested pseudobulk size. The package will never
+   merge undersized groups across a declared boundary.
+4. Confirm the initial Tahoe formula and condition encoding. The proposed
+   default is `~ 0 + condition`, with drug-dose labels as numerators and the
+   same-plate DMSO label as denominator; Tahoe orchestration remains
+   responsible for eligible pair selection.
+5. Which cell identifier is canonical across counts, metadata, graph, and
+   split artifacts? Stable source hashes require a unique, immutable ID rather
+   than row positions when artifacts may be reconstructed independently.
+6. Should rank deficiency, zero libraries, seed-bridge failure, and mixed
+   pseudobulk boundaries always be hard failures in production? The proposed
+   strict default is error, with explicit warning modes only for backward
+   compatibility.
+7. May CPU defaults change from implicit all-host-CPUs behavior to one worker,
+   with explicit fit-level and contrast-level overrides? This is safer for
+   batch scheduling but is a visible behavior change.
+8. What minimal LUAD input and expected outputs may be committed or generated
+   for the compatibility smoke test? If no redistributable fixture exists, the
+   requester should provide an immutable artifact location and checksum.
+
 ## Workstreams
 
 ### 0. Recover the supported PyDESeq2 inference path
