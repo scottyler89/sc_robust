@@ -290,13 +290,13 @@ Strict defaults are scoped by failure type:
 
 #### Acceptance criteria
 
-- [ ] One shared hash/serializer implementation replaces private variants.
-- [ ] Repeated equivalent inputs produce byte-identical canonical JSON and IDs.
-- [ ] Shape-equal reordered cell/gene fixtures fail with actionable findings.
-- [ ] All provenance records serialize without pickle or `default=str`.
-- [ ] Result fields reference one canonical design/config snapshot rather than
+- [x] One shared hash/serializer implementation replaces private variants.
+- [x] Repeated equivalent inputs produce byte-identical canonical JSON and IDs.
+- [x] Shape-equal reordered cell/gene fixtures fail with actionable findings.
+- [x] All provenance records serialize without pickle or `default=str`.
+- [x] Result fields reference one canonical design/config snapshot rather than
   duplicating independently mutable values.
-- [ ] Robust, pseudobulk, DE, and pathway results export the same versioned
+- [x] Robust, pseudobulk, DE, and pathway results export the same versioned
   provenance envelope with stage-specific payloads.
 
 #### Validation
