@@ -177,14 +177,36 @@ def fit_deseq_dataset(dds: "DeseqDataSet") -> "DeseqDataSet":
     Run the standard DESeq2 fitting steps on an existing dataset.
     """
     _, _, _ = _import_pydeseq2()
-    dds.fit_size_factors()
-    dds.fit_genewise_dispersions()
-    dds.fit_dispersion_prior()
-    dds.fit_MAP_dispersions()
-    dds.fit_LFC()
-    dds.calculate_cooks()
-    if getattr(dds, "refit_cooks", False):
-        dds.refit()
+    diagnostics = dict(getattr(dds, "_sc_robust_diagnostics", {}))
+    diagnostics.setdefault("status", "fitting")
+    try:
+        dds.fit_size_factors()
+        dds.fit_genewise_dispersions()
+        dds.fit_dispersion_prior()
+        dds.fit_MAP_dispersions()
+        dds.fit_LFC()
+        dds.calculate_cooks()
+        if getattr(dds, "refit_cooks", False):
+            dds.refit()
+    except Exception as exc:
+        diagnostics.update({"status": "failed", "error_type": type(exc).__name__, "error": str(exc)})
+        dds._sc_robust_diagnostics = diagnostics
+        raise
+    diagnostics.update({"status": "fit", "error": None})
+    if hasattr(dds, "design_matrix"):
+        matrix = dds.design_matrix
+    elif hasattr(dds, "obsm") and "design_matrix" in dds.obsm:
+        matrix = dds.obsm["design_matrix"]
+    else:
+        matrix = None
+    if matrix is not None:
+        matrix = np.asarray(matrix)
+        diagnostics["design_matrix"] = {
+            "shape": [int(value) for value in matrix.shape],
+            "rank": int(np.linalg.matrix_rank(matrix)),
+            "nonfinite": int(np.size(matrix) - np.isfinite(matrix).sum()),
+        }
+    dds._sc_robust_diagnostics = diagnostics
     return dds
 
 
