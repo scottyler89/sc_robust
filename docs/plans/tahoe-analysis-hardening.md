@@ -662,7 +662,7 @@ events and evidence; it does not redefine milestone status.
 | 2026-07-24 | M3 | Added sparse-count support and integer-factor fixture; normalized sparse metadata weights | `7adedab` | boundary/count-split focused tests: `7 passed`; all eligible source IDs remain unique |
 | 2026-07-24 | M4 | Started validated count-split adapter implementation | `4677292` | cells x genes public contract, conservation, deterministic seed policy, and shared robust path |
 | 2026-07-24 | M4 | Added preflight validation, exact dense/sparse conservation, seed-failure policy, and shared `do_splits` integration | `a9804b7` | adapter/pipeline tests: `8 passed`; full suite: `94 passed, 22 warnings` |
-| 2026-07-24 | M4 | Added explicit negative-count and seed-bridge failure fixtures | pending | adapter tests: `4 passed`; deterministic, dense/sparse, and validation paths covered |
+| 2026-07-24 | M4 | Added explicit negative-count and seed-bridge failure fixtures | `35e8c61` | adapter tests: `4 passed`; deterministic, dense/sparse, malformed, and validation paths covered |
 | 2026-07-24 | M5 | Started canonical seeded-Leiden implementation after M0 dependency gate | `b26c750` | random_state/seed alias, graph wrapper, and gene-module propagation |
 | 2026-07-24 | M5 | Added deterministic Leiden seed alias, workflow propagation, and dependency-version provenance | `c6d09f3` | focused seed/graph/gene-module tests: `12 passed`; full suite: `96 passed, 22 warnings` |
 | 2026-07-24 | M6 | Started release integration audit after M0-M5 implementation increments | `8a40926` | public exports, docs, build/CI, dependency pins, and source compatibility remain to audit |
