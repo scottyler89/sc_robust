@@ -1,6 +1,7 @@
 import numpy as np
 import pandas as pd
 import pytest
+from scipy import sparse
 from scipy.sparse import coo_matrix
 
 from sc_robust.de.pseudobulk import build_pseudobulk
@@ -50,3 +51,13 @@ def test_partition_by_rejects_null_factor_and_can_drop_source_lists():
         partition_by="sample", retain_source_cells=False, random_state=1,
     )
     assert "source_cells" not in result.metadata
+
+
+def test_sparse_counts_and_integer_boundary_factor():
+    metadata = pd.DataFrame({"batch": [1, 1, 2, 2]}, index=["a", "b", "c", "d"])
+    result = build_pseudobulk(
+        _graph(4), sparse.csr_matrix(np.ones((4, 2), dtype=int)),
+        mode="topology", cells_per_pb=2, cell_metadata=metadata, partition_by="batch", random_state=2,
+    )
+    assert set(result.metadata["batch"]) == {"1", "2"}
+    assert set(result.metadata["source_cell_ids"].explode()) == set(metadata.index)
