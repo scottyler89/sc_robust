@@ -646,7 +646,8 @@ events and evidence; it does not redefine milestone status.
 | 2026-07-24 | M0 | Canonicalized gene-module report serialization and closed M0 acceptance criteria | `ba33452` | exact M0 validation `45 passed`; gene/robust tests `15 passed`; full suite `84 passed` |
 | 2026-07-24 | M1 | Started PyDESeq2 fallback audit from clean base `5196ce1`; dirty sibling retained as reference | pending | clean sibling worktree creation next |
 | 2026-07-24 | M1 | Added committed IRLS and Cox-Reid fallback diagnostics in clean PyDESeq2 worktree | `8d1c39f` (`5196ce1` base) | focused `3 passed`; singular retry smoke passed; stock/hardened ordinary utility outputs byte-identical; PyDESeq2 suite collection initially blocked by missing test dependencies |
-| 2026-07-24 | M1 | Revalidated clean PyDESeq2 against isolated compatible dependencies | `8d1c39f` | `tests/test_pydeseq2.py`: `38 passed`; `tests/test_edge_cases.py` ran under the same target; no shared environment changes
+| 2026-07-24 | M1 | Revalidated clean PyDESeq2 against isolated compatible dependencies | `8d1c39f` | `tests/test_pydeseq2.py`: `38 passed`; `tests/test_edge_cases.py`: `19 passed in 31.69s`; focused fallback tests: `3 passed`; no shared environment changes |
+| 2026-07-24 | M1 | Pinning gate audited | pending | package metadata still has unversioned `pydeseq2`; clean fallback commit `8d1c39f` is local and not yet a resolvable published/fork pin, so M1 remains in progress |
 
 Update protocol:
 
