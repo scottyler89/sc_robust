@@ -165,7 +165,7 @@ Status values are `not started`, `in progress`, `blocked`, `done`, or `deferred`
 | --- | --- | --- | --- | --- | --- |
 | M0 | P0 | done | none | Provenance, SSoT, compatibility foundation | commit and M0 validation output |
 | M1 | P0 | in progress | none | Reviewed PyDESeq2 safeguards | immutable commit and numerical report |
-| M2 | P0 | not started | M0, M1 | Explicit DE design and diagnostics | commit and M2 validation output |
+| M2 | P0 | in progress | M0, M1 | Explicit DE design and diagnostics | commit and M2 validation output |
 | M3 | P1 | not started | M0 | Metadata-driven pseudobulk boundaries | commit and M3 validation output |
 | M4 | P1 | not started | M0 | Validated count-split adapter | commit and M4 validation output |
 | M5 | P1 | not started | M0 | Deterministic Leiden propagation | commit and M5 validation output |
@@ -648,6 +648,7 @@ events and evidence; it does not redefine milestone status.
 | 2026-07-24 | M1 | Added committed IRLS and Cox-Reid fallback diagnostics in clean PyDESeq2 worktree | `8d1c39f` (`5196ce1` base) | focused `3 passed`; singular retry smoke passed; stock/hardened ordinary utility outputs byte-identical; PyDESeq2 suite collection initially blocked by missing test dependencies |
 | 2026-07-24 | M1 | Revalidated clean PyDESeq2 against isolated compatible dependencies | `8d1c39f` | `tests/test_pydeseq2.py`: `38 passed`; `tests/test_edge_cases.py`: `19 passed in 31.69s`; focused fallback tests: `3 passed`; no shared environment changes |
 | 2026-07-24 | M1 | Pinning gate audited | pending | package metadata still has unversioned `pydeseq2`; clean fallback commit `8d1c39f` is local and not yet a resolvable published/fork pin, so M1 remains in progress |
+| 2026-07-24 | M2 | Started explicit DE design and diagnostics implementation after M0/M1 dependency audit | pending | preserve shorthand and add focused design/diagnostic tests |
 
 Update protocol:
 
