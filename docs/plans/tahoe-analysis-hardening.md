@@ -680,6 +680,7 @@ events and evidence; it does not redefine milestone status.
 | 2026-07-24 | M6 | Final validation after M2 acceptance fixtures | `82a67d1` | full suite: `102 passed, 24 warnings`; prior package build succeeded; M1 pin and M2/M6 release gates remain |
 | 2026-07-24 | M6 | Corrected CI workflow test/build step structure | `d88a332` | workflow now has separate test and build steps; clean CI run and immutable DE dependency pin remain open |
 | 2026-07-24 | M6 | Post-SSoT release validation | `5f77423` | full suite: `103 passed, 24 warnings`; `python -m build` succeeded; dependency pin and CI run remain open |
+| 2026-07-24 | M6 | Added resolved upstream PyDESeq2 DE CI job | `5027298` | workflow YAML parsed with `test` and `de` jobs; DE constraint is `pydeseq2==0.5.0`; remote CI run and hardened fork pin remain open |
 
 Update protocol:
 
