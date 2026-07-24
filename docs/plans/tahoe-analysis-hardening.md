@@ -687,6 +687,8 @@ events and evidence; it does not redefine milestone status.
 | 2026-07-24 | M6 | Post-alias release validation | `6b39890` | full suite: `105 passed, 24 warnings`; `python -m build` succeeded; remote CI URL and hardened fork pin remain open |
 | 2026-07-24 | M6 | Added explicit root-to-DE-to-pathway provenance lineage | `bad8b39` | focused lineage/pathway/DE tests: `23 passed`; parent IDs serialize through stage envelopes; dependency pin and remote CI remain open |
 | 2026-07-24 | M6 | Post-lineage release validation | `bad8b39` | full suite: `106 passed, 24 warnings`; `python -m build` succeeded; dependency pin and remote CI remain open |
+| 2026-07-24 | M6 | Covered pathway parent lineage in the synthetic public workflow | `f2f4fd1` | focused smoke: `1 passed`; pathway branch now asserts DE parent ID propagation |
+| 2026-07-24 | M6 | Post-pathway-lineage validation | `f2f4fd1` | full suite: `106 passed, 24 warnings`; hardened dependency pin and remote CI remain open |
 | 2026-07-24 | M6 | Aligned README alias migration guidance with runtime warnings | `b6b9ba1` | handoff docs now identify deprecated aliases and replacements; dependency pin and remote CI gates remain open |
 
 Update protocol:
