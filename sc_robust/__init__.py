@@ -1,4 +1,5 @@
 from ._version import __version__
+from .provenance import *  # noqa: F401,F403
 
 from sc_robust.sc_robust import *
 
