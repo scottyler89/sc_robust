@@ -656,7 +656,7 @@ events and evidence; it does not redefine milestone status.
 | 2026-07-24 | M3 | Started metadata-driven pseudobulk boundary implementation after M0 dependency gate | `f9e6d74` | reuse METIS builder per exact joint boundary and preserve source-cell provenance |
 | 2026-07-24 | M3 | Added joint `partition_by` boundaries, source IDs/hashes, retain-source control, and METIS advisory warnings | `1e999d9` | focused boundary/axis tests: `4 passed`; full suite before hash correction: `91 passed, 21 warnings`; acceptance review remains |
 | 2026-07-24 | M4 | Started validated count-split adapter implementation | `4677292` | cells x genes public contract, conservation, deterministic seed policy, and shared robust path |
-| 2026-07-24 | M4 | Added preflight validation, exact dense/sparse conservation, seed-failure policy, and shared `do_splits` integration | pending | adapter/pipeline tests: `8 passed`; full suite: `94 passed, 22 warnings` |
+| 2026-07-24 | M4 | Added preflight validation, exact dense/sparse conservation, seed-failure policy, and shared `do_splits` integration | `a9804b7` | adapter/pipeline tests: `8 passed`; full suite: `94 passed, 22 warnings` |
 
 Update protocol:
 
