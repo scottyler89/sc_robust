@@ -683,6 +683,8 @@ events and evidence; it does not redefine milestone status.
 | 2026-07-24 | M6 | Added resolved upstream PyDESeq2 DE CI job | `5027298` | workflow YAML parsed with `test` and `de` jobs; DE constraint is `pydeseq2==0.5.0`; remote CI run and hardened fork pin remain open |
 | 2026-07-24 | M6 | Added synthetic public-workflow smoke using LUAD call shape | `b48478a` | focused smoke: `1 passed`; synthetic only, no LUAD data access; public stage provenance reconstructed |
 | 2026-07-24 | M6 | Post-smoke release validation | `b48478a` | full suite: `104 passed, 24 warnings`; `python -m build` succeeded; remote CI URL and hardened fork pin remain open |
+| 2026-07-24 | M6 | Added actionable deprecation warnings for legacy DE aliases | `6b39890` | focused alias tests: `6 passed`; aliases now direct users to `design`, `annotation_columns`, and `pairs`; full validation follows |
+| 2026-07-24 | M6 | Post-alias release validation | `6b39890` | full suite: `105 passed, 24 warnings`; `python -m build` succeeded; remote CI URL and hardened fork pin remain open |
 
 Update protocol:
 
