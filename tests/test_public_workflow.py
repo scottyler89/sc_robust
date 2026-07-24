@@ -47,7 +47,19 @@ def test_synthetic_public_workflow_reconstructs_stage_provenance(monkeypatch):
     monkeypatch.setattr(workflow, "prepare_deseq_dataset", fake_prepare)
     monkeypatch.setattr(workflow, "fit_deseq_dataset", fake_fit)
     monkeypatch.setattr(workflow, "run_cluster_vs_all", fake_cluster)
-    monkeypatch.setattr(workflow, "resolve_pathway_libraries", lambda *args, **kwargs: [])
+    pathway_calls = []
+
+    def fake_pathways(*args, **kwargs):
+        pathway_calls.append(kwargs)
+        from sc_robust.de.base import PathwayEnrichmentResult
+        return PathwayEnrichmentResult(
+            per_contrast={"treated_vs_control": pd.DataFrame()},
+            libraries=["synthetic.gmt"],
+            parent_ids=kwargs["parent_ids"],
+        )
+
+    monkeypatch.setattr(workflow, "resolve_pathway_libraries", lambda *args, **kwargs: ["synthetic.gmt"])
+    monkeypatch.setattr(workflow, "run_pathway_enrichment_for_clusters", fake_pathways)
 
     output = perform_de_workflow(
         graph=None,
@@ -55,13 +67,15 @@ def test_synthetic_public_workflow_reconstructs_stage_provenance(monkeypatch):
         cluster_labels=["c1", "c1", "c2", "c2"],
         cell_metadata=metadata,
         design_columns=["condition"],
-        pathway_libraries=None,
+        pathway_libraries=["synthetic.gmt"],
+
     )
 
     assert output["pseudobulk"] is pseudobulk
     assert output["cluster_vs_all_de"] is cluster_result
     assert output["pairwise_de"] is None
-    assert output["cluster_vs_all_pathways"] is None
+    assert output["cluster_vs_all_pathways"].provenance.parent_ids == (cluster_result.provenance.stable_id,)
+    assert pathway_calls[0]["parent_ids"] == (cluster_result.provenance.stable_id,)
     assert calls["fit"] is True
     assert calls["pseudobulk"]["cluster_labels"] == ["c1", "c1", "c2", "c2"]
     assert output["pseudobulk"].provenance.stage == "pseudobulk"
