@@ -29,3 +29,15 @@ def test_same_seed_and_order_repeats():
     first = split_counts(counts, [0.25, 0.75], seed=19)
     second = split_counts(counts, [0.25, 0.75], seed=19)
     assert all(np.array_equal(left, right) for left, right in zip(first, second))
+
+
+def test_negative_counts_and_seed_bridge_failure(monkeypatch):
+    from sc_robust import count_split_adapter as adapter
+
+    with pytest.raises(CountSplitValidationError, match="nonnegative"):
+        split_counts(np.array([[-1, 0]], dtype=int), [1.0])
+    def fail_seed(*args, **kwargs):
+        raise RuntimeError("bridge unavailable")
+    monkeypatch.setattr(adapter, "_seed_numba", fail_seed)
+    with pytest.raises(RuntimeError, match="bridge unavailable"):
+        split_counts(np.ones((2, 2), dtype=int), [1.0], seed=3)
