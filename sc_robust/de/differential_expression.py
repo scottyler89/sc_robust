@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import warnings
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from itertools import combinations
 from pathlib import Path
@@ -109,6 +110,18 @@ def prepare_deseq_dataset(
 
     if design is not None and design_columns is not None:
         raise ValueError("Provide either design or design_columns, not both.")
+    if design_columns is not None:
+        warnings.warn(
+            "design_columns is deprecated; use the explicit design formula instead.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+    if metadata_columns is not None:
+        warnings.warn(
+            "metadata_columns is deprecated; use annotation_columns instead.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
     annotations = tuple(annotation_columns or metadata_columns or ())
     if annotation_columns is not None and metadata_columns is not None:
         raise ValueError("Provide annotation_columns; metadata_columns is a compatibility alias.")
@@ -495,6 +508,12 @@ def run_pairwise_de(
     design_cols = list(matrix.columns)
     if cluster_pairs is not None and pairs is not None:
         raise ValueError("Provide either pairs or cluster_pairs, not both.")
+    if cluster_pairs is not None:
+        warnings.warn(
+            "cluster_pairs is deprecated; use pairs instead.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
     pairs = list(pairs if pairs is not None else (cluster_pairs or ()))
     if not pairs:
         raise ValueError("At least one pair is required.")

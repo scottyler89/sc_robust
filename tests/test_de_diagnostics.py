@@ -124,5 +124,38 @@ def test_pairs_evaluates_only_requested_pair_and_alias_conflict(monkeypatch):
     result = de.run_pairwise_de(dds, pairs=[("a", "b")], n_jobs=1)
     assert list(result.contrast_results) == ["a_vs_b"]
     assert len(calls) == 1
+    with pytest.warns(DeprecationWarning, match="cluster_pairs"):
+        alias_result = de.run_pairwise_de(dds, cluster_pairs=[("a", "b")], n_jobs=1)
+    assert list(alias_result.contrast_results) == ["a_vs_b"]
     with pytest.raises(ValueError, match="either pairs or cluster_pairs"):
         de.run_pairwise_de(dds, pairs=[("a", "b")], cluster_pairs=[("a", "b")])
+
+
+def test_legacy_prepare_aliases_emit_actionable_warnings(monkeypatch):
+    from sc_robust.de import differential_expression as de
+    from sc_robust.de.base import PseudobulkResult
+
+    class FakeDDS:
+        def __init__(self, **kwargs):
+            self.kwargs = kwargs
+
+    class FakeInference:
+        def __init__(self, **kwargs):
+            self.kwargs = kwargs
+
+    monkeypatch.setattr(de, "_import_pydeseq2", lambda: (FakeDDS, None, FakeInference))
+    counts = pd.DataFrame([[11, 12], [13, 14]], columns=["g1", "g2"], index=["pb1", "pb2"])
+    metadata = pd.DataFrame(
+        {"condition": ["a", "b"], "batch": ["x", "y"], "condition_prop": [1.0, 0.0]}, index=counts.index
+    )
+    result = PseudobulkResult(counts=counts, metadata=metadata)
+
+    with pytest.warns(DeprecationWarning, match="metadata_columns"):
+        de.prepare_deseq_dataset(
+            result, design="~ 0 + condition", metadata_columns=["batch"],
+            min_counts=None, min_variance=None
+        )
+    with pytest.warns(DeprecationWarning, match="design_columns"):
+        de.prepare_deseq_dataset(
+            result, design_columns=["condition_prop"], min_counts=None, min_variance=None
+        )
