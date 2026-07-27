@@ -734,3 +734,4 @@ no pathway-analysis-only PyPI dependency route today. A `pathway` optional
 extra and packaging metadata cleanup remain useful, but they should be handled
 as a separate scoped packaging change so the Tahoe dependency pin and release
 gates are not conflated with optional-install redesign.
+| 2026-07-27 | M6 | Revalidated local release candidate after continuation audit | pending | `git diff --check`; full suite `106 passed, 24 warnings`; `python -m build` produced sdist and wheel; immutable M1 pin and remote CI evidence remain open |
