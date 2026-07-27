@@ -38,6 +38,7 @@ jobs:
         run: |
           echo "### Core pytest failure" >> "$GITHUB_STEP_SUMMARY"
           sed -n "/= FAILURES =/," pytest-output.txt | head -120 | while IFS= read -r line; do echo "::error::$line"; done
+          grep -E "^(E   |[[:space:]]*File |[[:space:]]*raise |[[:space:]]*ValueError|[[:space:]]*LinAlgError|[[:space:]]*TypeError|[[:space:]]*RuntimeError)" pytest-output.txt | head -80 | while IFS= read -r line; do echo "::error::$line"; done
           head -80 pytest-output.txt | while IFS= read -r line; do echo "::error::$line"; done
           tail -80 pytest-output.txt | while IFS= read -r line; do echo "::error::$line"; done
           tail -120 pytest-output.txt >> "$GITHUB_STEP_SUMMARY"
@@ -78,6 +79,7 @@ jobs:
         run: |
           echo "### DE pytest failure" >> "$GITHUB_STEP_SUMMARY"
           sed -n "/= FAILURES =/," pytest-output.txt | head -120 | while IFS= read -r line; do echo "::error::$line"; done
+          grep -E "^(E   |[[:space:]]*File |[[:space:]]*raise |[[:space:]]*ValueError|[[:space:]]*LinAlgError|[[:space:]]*TypeError|[[:space:]]*RuntimeError)" pytest-output.txt | head -80 | while IFS= read -r line; do echo "::error::$line"; done
           head -80 pytest-output.txt | while IFS= read -r line; do echo "::error::$line"; done
           tail -80 pytest-output.txt | while IFS= read -r line; do echo "::error::$line"; done
           tail -120 pytest-output.txt >> "$GITHUB_STEP_SUMMARY"
