@@ -694,6 +694,7 @@ events and evidence; it does not redefine milestone status.
 | 2026-07-24 | M6 | Reconciled locally proven M6 acceptance criteria | `e816c65` | public examples, alias migration, and no-sibling/no-runtime-patch source audit checked; M1 dependency and remote CI criteria remain open |
 | 2026-07-24 | M6 | External CI handoff recorded | pending | Owner: sc_robust release owner; push reviewed branch, run core and DE jobs, and attach the CI URL plus resolved wheel metadata |
 | 2026-07-27 | M6 | Revalidated local release candidate after continuation audit | pending | `git diff --check`; full suite `106 passed, 24 warnings`; `python -m build` produced sdist and wheel; immutable M1 pin and remote CI evidence remain open |
+| 2026-07-27 | M6 | Committed local release validation evidence | `5ab31ad` | progress-log placement correction committed; M1 immutable pin and M6 remote CI evidence remain open |
 
 Update protocol:
 
