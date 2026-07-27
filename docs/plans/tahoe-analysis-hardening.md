@@ -704,6 +704,8 @@ events and evidence; it does not redefine milestone status.
 | 2026-07-27 | M6 | Diagnosed and fixed NumPy density compatibility | `c64cf97` | Python 3.11/3.12 failure was `numpy.trapz` removal; focused density tests `2 passed`; full suite `106 passed, 20 warnings`; remote rerun follows |
 | 2026-07-27 | M6 | Closed release validation gates | `30315054054` | https://github.com/scottyler89/sc_robust/actions/runs/30315054054; DE and core Python 3.10, 3.11, and 3.12 jobs all passed; clean `python -m build` produced sdist and wheel with vendored PyDESeq2 source and MIT license |
 
+| 2026-07-27 | M6 | Verified final plan head in remote CI | `30315221355` | https://github.com/scottyler89/sc_robust/actions/runs/30315221355; DE and core Python 3.10, 3.11, and 3.12 all passed on `cf88329` |
+
 Update protocol:
 
 - Set a milestone `in progress` in the tracker before implementation begins.
