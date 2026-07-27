@@ -699,6 +699,8 @@ events and evidence; it does not redefine milestone status.
 
 | 2026-07-27 | M1 | Vendored reviewed PyDESeq2 source and closed M1/M2 local gates | `0597712` | MIT license included; vendored modules byte-identical to `8d1c39f` except source identity metadata; full suite `106 passed, 24 warnings`; clean build includes sdist/wheel PyDESeq2 source and license; M6 remote CI remains open |
 
+| 2026-07-27 | M6 | Vendored dependency remote CI run | `30313687700` | https://github.com/scottyler89/sc_robust/actions/runs/30313687700; install and vendored source-identity checks passed, but `test (3.10)`, `test (3.11)`, `test (3.12)`, and `de` failed at their test steps; local suite remains `106 passed, 24 warnings`; remote failure diagnosis remains open |
+
 Update protocol:
 
 - Set a milestone `in progress` in the tracker before implementation begins.
