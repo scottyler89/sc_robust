@@ -25,6 +25,7 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           python -m pip install -r requirements.txt
+          python -m pip install pytest
           python -m pip install -e .
 
       - name: Run tests
@@ -50,6 +51,7 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           python -m pip install -r requirements.txt -c constraints-de-ci.txt
+          python -m pip install pytest
           python -m pip install -e . -c constraints-de-ci.txt
 
       - name: Verify PyDESeq2 resolution
