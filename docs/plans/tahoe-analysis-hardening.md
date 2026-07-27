@@ -169,7 +169,7 @@ Status values are `not started`, `in progress`, `blocked`, `done`, or `deferred`
 | M3 | P1 | done | M0 | Metadata-driven pseudobulk boundaries | commit and M3 validation output |
 | M4 | P1 | done | M0 | Validated count-split adapter | commit and M4 validation output |
 | M5 | P1 | done | M0 | Deterministic Leiden propagation | commit and M5 validation output |
-| M6 | P0 release gate | in progress | M0-M5 | Integrated API, docs, CI, and compatibility review | release-candidate commit and CI URL |
+| M6 | P0 release gate | done | M0-M5 | Integrated API, docs, CI, and compatibility review | release-candidate commit and CI URL |
 | D1 | P2 | deferred | M6 and Tahoe pilot | Streaming-friendly QC proposal | approved follow-up plan |
 
 Execution follows dependency order first and priority second. M0 and M1 may run
@@ -579,7 +579,7 @@ Deliverables:
 - [x] Public examples use only exported APIs and reconstruct results from
   serialized provenance.
 - [x] Legacy aliases have tests and actionable deprecation messages.
-- [ ] Core and DE CI jobs pass in clean environments with resolved versions.
+- [x] Core and DE CI jobs pass in clean environments with resolved versions.
 - [x] No production path imports a dirty sibling or applies a runtime monkeypatch.
 
 #### Validation
@@ -700,6 +700,9 @@ events and evidence; it does not redefine milestone status.
 | 2026-07-27 | M1 | Vendored reviewed PyDESeq2 source and closed M1/M2 local gates | `0597712` | MIT license included; vendored modules byte-identical to `8d1c39f` except source identity metadata; full suite `106 passed, 24 warnings`; clean build includes sdist/wheel PyDESeq2 source and license; M6 remote CI remains open |
 
 | 2026-07-27 | M6 | Vendored dependency remote CI run | `30313687700` | https://github.com/scottyler89/sc_robust/actions/runs/30313687700; install and vendored source-identity checks passed, but `test (3.10)`, `test (3.11)`, `test (3.12)`, and `de` failed at their test steps; local suite remains `106 passed, 24 warnings`; remote failure diagnosis remains open |
+
+| 2026-07-27 | M6 | Diagnosed and fixed NumPy density compatibility | `c64cf97` | Python 3.11/3.12 failure was `numpy.trapz` removal; focused density tests `2 passed`; full suite `106 passed, 20 warnings`; remote rerun follows |
+| 2026-07-27 | M6 | Closed release validation gates | `30315054054` | https://github.com/scottyler89/sc_robust/actions/runs/30315054054; DE and core Python 3.10, 3.11, and 3.12 jobs all passed; clean `python -m build` produced sdist and wheel with vendored PyDESeq2 source and MIT license |
 
 Update protocol:
 
