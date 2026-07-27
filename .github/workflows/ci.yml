@@ -29,7 +29,15 @@ jobs:
           python -m pip install -e .
 
       - name: Run tests
-        run: python -m pytest -q
+        run: |
+          set -o pipefail
+          python -m pytest -q 2>&1 | tee pytest-output.txt
+
+      - name: Publish test failure summary
+        if: failure()
+        run: |
+          echo "### Core pytest failure" >> "$GITHUB_STEP_SUMMARY"
+          tail -120 pytest-output.txt >> "$GITHUB_STEP_SUMMARY"
 
       - name: Build package
         run: |
@@ -58,4 +66,12 @@ jobs:
         run: python -c 'import pydeseq2; assert pydeseq2.__version__ == "0.5.0"; assert pydeseq2.__source_commit__ == "8d1c39f7bf17aabe105458b02040f8c9770f8637"'
 
       - name: Run DE tests
-        run: python -m pytest -q tests/test_de_design.py tests/test_de_diagnostics.py tests/test_result_provenance.py
+        run: |
+          set -o pipefail
+          python -m pytest -q tests/test_de_design.py tests/test_de_diagnostics.py tests/test_result_provenance.py 2>&1 | tee pytest-output.txt
+
+      - name: Publish DE failure summary
+        if: failure()
+        run: |
+          echo "### DE pytest failure" >> "$GITHUB_STEP_SUMMARY"
+          tail -120 pytest-output.txt >> "$GITHUB_STEP_SUMMARY"
