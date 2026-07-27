@@ -191,7 +191,7 @@ def build_pseudobulk(
             for factor, value in zip(factors, boundary_key):
                 subgroup_meta[factor] = value
             subgroup_meta.index = [
-                f"{subgroup_meta.iloc[index]["boundary_key"]}__pb_{index}"
+                f"{subgroup_meta.iloc[index]['boundary_key']}__pb_{index}"
                 for index in range(len(subgroup_meta))
             ]
             subgroup_counts.index = subgroup_meta.index
