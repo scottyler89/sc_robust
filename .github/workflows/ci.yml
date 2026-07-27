@@ -37,6 +37,7 @@ jobs:
         if: failure()
         run: |
           echo "### Core pytest failure" >> "$GITHUB_STEP_SUMMARY"
+          head -80 pytest-output.txt | while IFS= read -r line; do echo "::error::$line"; done
           tail -80 pytest-output.txt | while IFS= read -r line; do echo "::error::$line"; done
           tail -120 pytest-output.txt >> "$GITHUB_STEP_SUMMARY"
 
@@ -75,5 +76,6 @@ jobs:
         if: failure()
         run: |
           echo "### DE pytest failure" >> "$GITHUB_STEP_SUMMARY"
+          head -80 pytest-output.txt | while IFS= read -r line; do echo "::error::$line"; done
           tail -80 pytest-output.txt | while IFS= read -r line; do echo "::error::$line"; done
           tail -120 pytest-output.txt >> "$GITHUB_STEP_SUMMARY"
