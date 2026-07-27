@@ -48,6 +48,7 @@ def test_imported_dependencies_are_listed_in_requirements():
     # Known optional imports that should not be forced on all installs.
     optional = {
         "scanpy",  # used only by sc_robust/example.py
+        "pydeseq2",  # distributed in-repo from the reviewed source commit
     }
 
     missing = sorted((imports_norm - reqs) - optional)

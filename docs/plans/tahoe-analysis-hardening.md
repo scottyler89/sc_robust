@@ -341,8 +341,9 @@ focused regression coverage and machine-readable diagnostics.
    machine-readable records rather than stdout messages.
 6. Compare coefficients, standard errors, dispersions, Cook's distances, and
    null behavior against stock PyDESeq2 on well-conditioned fixtures.
-7. Pin an immutable reviewed release or fork commit in package metadata, LUAD,
-   and CI. No production import may resolve through the sibling checkout.
+7. Distribute the reviewed PyDESeq2 source from immutable commit `8d1c39f7bf17aabe105458b02040f8c9770f8637` as an in-repo MIT-licensed package; package metadata and CI must resolve that vendored copy, and no production import may resolve through the sibling checkout.
+
+Distribution decision: PyDESeq2 is MIT-licensed. The reviewed source at `8d1c39f7bf17aabe105458b02040f8c9770f8637` is distributed in this repository with its license notice, and CI verifies its source identity instead of requiring an upstream fork publication.
 
 The result of this milestone is a short decision record identifying the
 supported commit, fallback location and epsilon, numerical tolerances, and
@@ -358,7 +359,7 @@ implementation is reviewed and recorded as a new formalization of inline code.
   and null behavior remain within approved tolerances.
 - [x] Fallback, convergence, and terminal failure are machine-readable and are
   not available only through stdout.
-- [ ] A reviewed immutable commit is pinned; production imports no dirty sibling.
+- [ ] The reviewed immutable source commit is distributed in-repo with its license notice; production imports no dirty sibling.
 
 #### Validation
 

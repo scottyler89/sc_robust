@@ -22,7 +22,7 @@ Homepage = "https://github.com/scottyler89/sc_robust"
 include-package-data = true
 
 [tool.setuptools.packages.find]
-include = ["sc_robust*"]
+include = ["sc_robust*", "pydeseq2*"]
 
 [tool.setuptools.dynamic]
 version = { attr = "sc_robust._version.__version__" }
@@ -34,4 +34,5 @@ sc_robust = [
   "data/pathways/*.gmt",
   "data/ensg_annotations_abbreviated.txt",
 ]
+pydeseq2 = ["LICENSE"]
 

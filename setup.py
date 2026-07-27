@@ -39,6 +39,7 @@ setuptools.setup(
              "data/pathways/*.gmt",
              "data/ensg_annotations_abbreviated.txt",
          ],
+         "pydeseq2": ["LICENSE"],
      },
      classifiers=[
          "Programming Language :: Python :: 3",

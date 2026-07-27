@@ -53,7 +53,7 @@ jobs:
           python -m pip install -e . -c constraints-de-ci.txt
 
       - name: Verify PyDESeq2 resolution
-        run: python -c 'import importlib.metadata as m; assert m.version("pydeseq2") == "0.5.0"'
+        run: python -c 'import pydeseq2; assert pydeseq2.__version__ == "0.5.0"; assert pydeseq2.__source_commit__ == "8d1c39f7bf17aabe105458b02040f8c9770f8637"'
 
       - name: Run DE tests
         run: python -m pytest -q tests/test_de_design.py tests/test_de_diagnostics.py tests/test_result_provenance.py
