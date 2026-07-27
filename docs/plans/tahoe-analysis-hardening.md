@@ -164,8 +164,8 @@ Status values are `not started`, `in progress`, `blocked`, `done`, or `deferred`
 | ID | Priority | Status | Depends on | Deliverable | Completion evidence |
 | --- | --- | --- | --- | --- | --- |
 | M0 | P0 | done | none | Provenance, SSoT, compatibility foundation | commit and M0 validation output |
-| M1 | P0 | in progress | none | Reviewed PyDESeq2 safeguards | immutable commit and numerical report |
-| M2 | P0 | in progress | M0, M1 | Explicit DE design and diagnostics | commit and M2 validation output |
+| M1 | P0 | done | none | Reviewed PyDESeq2 safeguards | immutable commit and numerical report |
+| M2 | P0 | done | M0, M1 | Explicit DE design and diagnostics | commit and M2 validation output |
 | M3 | P1 | done | M0 | Metadata-driven pseudobulk boundaries | commit and M3 validation output |
 | M4 | P1 | done | M0 | Validated count-split adapter | commit and M4 validation output |
 | M5 | P1 | done | M0 | Deterministic Leiden propagation | commit and M5 validation output |
@@ -359,7 +359,7 @@ implementation is reviewed and recorded as a new formalization of inline code.
   and null behavior remain within approved tolerances.
 - [x] Fallback, convergence, and terminal failure are machine-readable and are
   not available only through stdout.
-- [ ] The reviewed immutable source commit is distributed in-repo with its license notice; production imports no dirty sibling.
+- [x] The reviewed immutable source commit is distributed in-repo with its license notice; production imports no dirty sibling.
 
 #### Validation
 
@@ -575,7 +575,7 @@ Deliverables:
 
 #### Acceptance criteria
 
-- [ ] Every M0-M5 acceptance checkbox is complete with linked evidence.
+- [x] Every M0-M5 acceptance checkbox is complete with linked evidence.
 - [x] Public examples use only exported APIs and reconstruct results from
   serialized provenance.
 - [x] Legacy aliases have tests and actionable deprecation messages.
@@ -696,6 +696,8 @@ events and evidence; it does not redefine milestone status.
 | 2026-07-24 | M6 | External CI handoff recorded | pending | Owner: sc_robust release owner; push reviewed branch, run core and DE jobs, and attach the CI URL plus resolved wheel metadata |
 | 2026-07-27 | M6 | Revalidated local release candidate after continuation audit | pending | `git diff --check`; full suite `106 passed, 24 warnings`; `python -m build` produced sdist and wheel; immutable M1 pin and remote CI evidence remain open |
 | 2026-07-27 | M6 | Committed local release validation evidence | `5ab31ad` | progress-log placement correction committed; M1 immutable pin and M6 remote CI evidence remain open |
+
+| 2026-07-27 | M1 | Vendored reviewed PyDESeq2 source and closed M1/M2 local gates | `0597712` | MIT license included; vendored modules byte-identical to `8d1c39f` except source identity metadata; full suite `106 passed, 24 warnings`; clean build includes sdist/wheel PyDESeq2 source and license; M6 remote CI remains open |
 
 Update protocol:
 
