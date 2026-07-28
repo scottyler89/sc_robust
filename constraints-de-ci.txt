@@ -1,2 +1,0 @@
-# PyDESeq2 is vendored from reviewed commit 8d1c39f7bf17aabe105458b02040f8c9770f8637.
-# CI verifies the vendored version and source commit instead of resolving a sibling checkout.

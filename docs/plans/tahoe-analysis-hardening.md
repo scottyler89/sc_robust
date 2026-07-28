@@ -738,7 +738,7 @@ tracked here as the sole status source; Tahoe/LUAD execution remains excluded.
 - [x] Per-contrast pathway statistic-column mappings are supported natively and tested.
 - [x] Diagnostics and provenance have a stable user-facing schema example for success, filtering, fallback, and failure.
 - [x] Production runbook documents input contracts, stable IDs, boundaries, artifacts, failure policy, and handoff to Tahoe orchestration.
-- [x] Release CI validates the built wheel, metadata, license, imports, tests, and publication artifacts.
+- [ ] Release CI validates the built wheel, metadata, license, imports, tests, and publication artifacts.
 
 ### Validation
 
