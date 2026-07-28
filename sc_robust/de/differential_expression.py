@@ -62,6 +62,18 @@ def _effective_n_jobs(n_jobs: Optional[int]) -> int:
     return max(1, int(n_jobs))
 
 
+def _numeric_summary(values: object) -> dict[str, object]:
+    """Return a JSON-safe summary for an optional PyDESeq2 numeric field."""
+    array = np.asarray(values, dtype=float).reshape(-1)
+    finite = array[np.isfinite(array)]
+    summary: dict[str, object] = {"count": int(array.size), "finite_count": int(finite.size), "nonfinite_count": int(array.size - finite.size)}
+    if finite.size:
+        summary.update({"min": float(np.min(finite)), "median": float(np.median(finite)), "max": float(np.max(finite))})
+    else:
+        summary.update({"min": None, "median": None, "max": None})
+    return summary
+
+
 def _select_design_columns(
     metadata: pd.DataFrame,
     design_columns: Optional[Sequence[str]],
@@ -181,7 +193,12 @@ def prepare_deseq_dataset(
         "fit_id": design_spec.fit_id,
         "formula": design_spec.formula,
         "input_gene_count": int(pseudobulk.counts.shape[1]),
+        "filtered_gene_count": int(pseudobulk.counts.shape[1] - counts_df.shape[1]),
         "modeled_gene_count": int(counts_df.shape[1]),
+        "observations": {"count": int(len(metadata)), "per_condition": {term: {str(level): int(count) for level, count in metadata[term].astype(str).value_counts().items()} for term in formula_terms}},
+        "library_size": _numeric_summary(counts_df.sum(axis=1).to_numpy()),
+        "zero_library_count": int((counts_df.sum(axis=1) == 0).sum()),
+        "filtering": {"min_counts": min_counts, "min_variance": min_variance, "gene_list_requested": gene_list is not None},
         "design": design_spec.to_dict(),
         "execution": {"requested_n_cpus": requested_cpus, "resolved_n_cpus": eff_cpus},
     }
@@ -234,6 +251,25 @@ def fit_deseq_dataset(dds: "DeseqDataSet") -> "DeseqDataSet":
             "rank": int(np.linalg.matrix_rank(matrix)),
             "nonfinite": int(np.size(matrix) - np.isfinite(matrix).sum()),
         }
+    obsm = getattr(dds, "obsm", {})
+    varm = getattr(dds, "varm", {})
+    layers = getattr(dds, "layers", {})
+    diagnostics["size_factors"] = None
+    diagnostics["dispersions"] = None
+    diagnostics["cooks"] = None
+    if "size_factors" in obsm:
+        diagnostics["size_factors"] = _numeric_summary(obsm["size_factors"])
+    if "dispersions" in varm:
+        diagnostics["dispersions"] = _numeric_summary(varm["dispersions"])
+    if "cooks" in layers:
+        diagnostics["cooks"] = _numeric_summary(layers["cooks"])
+    try:
+        outliers = np.asarray(dds.cooks_outlier(), dtype=bool)
+        diagnostics["outliers"] = {"cooks_count": int(outliers.sum())}
+    except (AttributeError, TypeError, ValueError):
+        diagnostics["outliers"] = {"cooks_count": None}
+    replaced = varm.get("replaced") if hasattr(varm, "get") else None
+    diagnostics["outliers"]["refit_count"] = int(np.asarray(replaced, dtype=bool).sum()) if replaced is not None else None
     dds._sc_robust_diagnostics = diagnostics
     return dds
 

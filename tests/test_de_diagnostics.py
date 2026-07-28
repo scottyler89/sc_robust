@@ -86,6 +86,10 @@ def test_fit_success_collects_fallback_records(monkeypatch):
     de.fit_deseq_dataset(dds)
     assert dds._sc_robust_diagnostics["fallback_count"] == 2
     assert dds._sc_robust_diagnostics["fallbacks"][0]["irls_ridge_applied"]
+    assert dds._sc_robust_diagnostics["size_factors"] is None
+    assert dds._sc_robust_diagnostics["dispersions"] is None
+    assert dds._sc_robust_diagnostics["cooks"] is None
+    assert dds._sc_robust_diagnostics["outliers"]["cooks_count"] is None
 
 
 def test_filtering_failure_is_explicit(monkeypatch):
