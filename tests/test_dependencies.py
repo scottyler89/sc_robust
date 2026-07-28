@@ -1,4 +1,5 @@
 import ast
+import tomllib
 import sys
 from pathlib import Path
 
@@ -36,7 +37,9 @@ def _scan_top_level_imports(pkg_root: Path) -> set[str]:
 def test_imported_dependencies_are_listed_in_requirements():
     repo_root = Path(__file__).resolve().parents[1]
     imports = _scan_top_level_imports(repo_root / "sc_robust")
-    reqs = _parse_requirements(repo_root / "requirements.txt")
+    project = tomllib.loads((repo_root / "pyproject.toml").read_text(encoding="utf-8"))
+    reqs = set(project["project"]["dependencies"])
+    reqs.update(project["project"]["optional-dependencies"]["full"])
 
     # Some pip packages expose different import names.
     rename = {
@@ -52,5 +55,5 @@ def test_imported_dependencies_are_listed_in_requirements():
     }
 
     missing = sorted((imports_norm - reqs) - optional)
-    assert missing == [], f"Missing dependencies in requirements.txt: {missing}"
+    assert missing == [], f"Missing dependencies in pyproject.toml: {missing}"
 

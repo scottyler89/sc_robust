@@ -42,7 +42,7 @@ path. The hardening work is concentrated at these boundaries:
   higher-level seed propagation.
 - `sc_robust/qc.py`: existing metric, threshold, classification, and plotting
   seams; streaming generalization is deferred.
-- `setup.py`, `requirements.txt`, and `.github/workflows/ci.yml`: supported
+- `pyproject.toml`, `uv.lock`, and `.github/workflows/ci.yml`: supported
   PyDESeq2 pin and mandatory DE test environment.
 
 The LUAD repository demonstrates the intended calling sequence and useful
@@ -768,10 +768,9 @@ D1 requires its own later approval and is not a release blocker.
 - Broad performance grids or simulation campaigns beyond focused release
   regressions.
 
-## Follow-up Packaging Note
+## Packaging Decision
 
-The current `setup.py` installs the monolithic `requirements.txt`, so there is
-no pathway-analysis-only PyPI dependency route today. A `pathway` optional
-extra and packaging metadata cleanup remain useful, but they should be handled
-as a separate scoped packaging change so the Tahoe dependency pin and release
-gates are not conflated with optional-install redesign.
+The package base is the pathway-analysis route and lazily imports the full pipeline.
+The graph/count-split/DE stack is available through the explicit `[full]` extra.
+`pyproject.toml` owns declared dependencies and `uv.lock` owns the reviewed
+resolution; no second requirements manifest is maintained.
