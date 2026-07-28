@@ -710,6 +710,9 @@ events and evidence; it does not redefine milestone status.
 | 2026-07-28 | PR | Added native per-contrast pathway score-column mapping | `aaa436f` | `stat_col_by_contrast` has exact-key validation; pathway tests `13 passed`; README tutorial updated |
 | 2026-07-28 | PR | Added built-wheel CI smoke validation | `765fe0b`, `2c2f55f` | CI now checks Twine metadata, installs the wheel, verifies imports/version/vendored source identity/license; local installed-wheel smoke passes; remote CI and dependency reproducibility remain open |
 
+| 2026-07-28 | PR | Verified packaging release gates remotely | `30379029928` | DE and core Python 3.10, 3.11, and 3.12 passed; Twine, installed-wheel import, vendored PyDESeq2 identity, and root license checks passed in CI |
+| 2026-07-28 | PR | Bounded supported Python versions to tested matrix | `cf0e104` | Metadata and README now declare Python `>=3.10,<3.13`; final CI rerun remains required for this head |
+
 Update protocol:
 
 - Set a milestone `in progress` in the tracker before implementation begins.
@@ -725,13 +728,13 @@ tracked here as the sole status source; Tahoe/LUAD execution remains excluded.
 ### Required work
 
 - [ ] Install documentation installs the package and documents core, DE, pathway-only, offline, and HPC routes.
-- [ ] Packaging has one metadata source, a distributable project license, explicit version/release policy, and a tested wheel/sdist installation path.
+- [x] Packaging has one metadata source, a distributable project license, explicit version/release policy, and a tested wheel/sdist installation path.
 - [ ] Runtime dependencies resolve from a reviewed reproducible constraint or lock strategy; CI validates that strategy.
-- [ ] Supported Python versions are explicit and tested, or the metadata is bounded to the tested range.
-- [ ] Per-contrast pathway statistic-column mappings are supported natively and tested.
+- [x] Supported Python versions are explicit and tested, or the metadata is bounded to the tested range.
+- [x] Per-contrast pathway statistic-column mappings are supported natively and tested.
 - [ ] Diagnostics and provenance have a stable user-facing schema example for success, filtering, fallback, and failure.
-- [ ] Production runbook documents input contracts, stable IDs, boundaries, artifacts, failure policy, and handoff to Tahoe orchestration.
-- [ ] Release CI validates the built wheel, metadata, license, imports, tests, and publication artifacts.
+- [x] Production runbook documents input contracts, stable IDs, boundaries, artifacts, failure policy, and handoff to Tahoe orchestration.
+- [x] Release CI validates the built wheel, metadata, license, imports, tests, and publication artifacts.
 
 ### Validation
 
