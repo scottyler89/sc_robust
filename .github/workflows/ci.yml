@@ -74,6 +74,7 @@ jobs:
           uv export --frozen --format requirements-txt --no-hashes --no-emit-project > /tmp/sc-robust-pathway-lock.txt
           python -m pip install -r /tmp/sc-robust-pathway-lock.txt
           python -m pip install .
+          python -m pip install pytest
 
       - name: Run pathway-only tests
         run: python -m pytest -q tests/test_pathway_import.py tests/test_pathways.py
