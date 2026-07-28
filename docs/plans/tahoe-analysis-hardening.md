@@ -706,6 +706,10 @@ events and evidence; it does not redefine milestone status.
 
 | 2026-07-27 | M6 | Verified final plan head in remote CI | `30315221355` | https://github.com/scottyler89/sc_robust/actions/runs/30315221355; DE and core Python 3.10, 3.11, and 3.12 all passed on `cf88329` |
 
+| 2026-07-28 | PR | Consolidated package metadata and added root AGPL license | `11c5d93`, `3f72547` | Removed stale `setup.py`; corrected install path; local build initially exposed and then fixed obsolete setuptools license classifier; clean sdist/wheel and `twine check` pass |
+| 2026-07-28 | PR | Added native per-contrast pathway score-column mapping | `aaa436f` | `stat_col_by_contrast` has exact-key validation; pathway tests `13 passed`; README tutorial updated |
+| 2026-07-28 | PR | Added built-wheel CI smoke validation | `765fe0b`, `2c2f55f` | CI now checks Twine metadata, installs the wheel, verifies imports/version/vendored source identity/license; local installed-wheel smoke passes; remote CI and dependency reproducibility remain open |
+
 Update protocol:
 
 - Set a milestone `in progress` in the tracker before implementation begins.
