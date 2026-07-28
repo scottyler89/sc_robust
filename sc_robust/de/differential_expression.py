@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import warnings
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from itertools import combinations
 from pathlib import Path
@@ -13,6 +14,8 @@ import pandas as pd
 import matplotlib.pyplot as plt
 
 from .base import DEAnalysisResult, PseudobulkResult, load_default_gene_annotations
+from ..provenance import stable_identifier
+from .design import DEFitError, DesignSpec, build_design_frame, make_design_spec
 
 __all__ = [
     "prepare_deseq_dataset",
@@ -20,6 +23,8 @@ __all__ = [
     "run_cluster_vs_all",
     "run_pairwise_de",
     "run_all_pairwise_de",
+    "DEFitError",
+    "DesignSpec",
 ]
 
 
@@ -49,12 +54,24 @@ def _effective_n_jobs(n_jobs: Optional[int]) -> int:
     """Normalize parallelism requests (0 -> all CPUs, negative offsets allowed)."""
     total = os.cpu_count() or 1
     if n_jobs is None:
-        return 1
+        return max(1, total // 2)
     if n_jobs == 0:
         return total
     if n_jobs < 0:
         return max(1, total + 1 + int(n_jobs))
     return max(1, int(n_jobs))
+
+
+def _numeric_summary(values: object) -> dict[str, object]:
+    """Return a JSON-safe summary for an optional PyDESeq2 numeric field."""
+    array = np.asarray(values, dtype=float).reshape(-1)
+    finite = array[np.isfinite(array)]
+    summary: dict[str, object] = {"count": int(array.size), "finite_count": int(finite.size), "nonfinite_count": int(array.size - finite.size)}
+    if finite.size:
+        summary.update({"min": float(np.min(finite)), "median": float(np.median(finite)), "max": float(np.max(finite))})
+    else:
+        summary.update({"min": None, "median": None, "max": None})
+    return summary
 
 
 def _select_design_columns(
@@ -81,6 +98,8 @@ def prepare_deseq_dataset(
     pseudobulk: PseudobulkResult,
     *,
     design_columns: Optional[Sequence[str]] = None,
+    design: Optional[str] = None,
+    annotation_columns: Optional[Sequence[str]] = None,
     metadata_columns: Optional[Sequence[str]] = None,
     min_counts: Optional[float] = 10.0,
     min_variance: Optional[float] = 1.0,
@@ -101,30 +120,45 @@ def prepare_deseq_dataset(
     metadata = pseudobulk.metadata.copy()
     metadata = metadata.loc[counts_df.index]
 
-    design_cols = _select_design_columns(metadata, design_columns)
-    design_df = metadata.loc[:, design_cols].copy()
-
-    # Optional additional metadata columns (e.g., sample/time/drug)
-    if metadata_columns:
-        extra_missing = [col for col in metadata_columns if col not in metadata.columns]
-        if extra_missing:
-            raise KeyError(f"Requested metadata columns not found: {extra_missing}")
-        extra_df = metadata.loc[:, metadata_columns]
-        design_df = pd.concat([design_df, extra_df], axis=1)
-
-    # Sanitize column names for DESeq2 formula compatibility
-    rename_map = {col: _sanitize_column(col) for col in design_df.columns}
-    sanitized_design_cols = []
-    for col in design_cols:
-        new_name = rename_map.get(col, _sanitize_column(col))
-        if new_name in sanitized_design_cols:
-            raise ValueError(
-                "Sanitized design column names are not unique. Please rename cluster columns to avoid collisions."
-            )
-        sanitized_design_cols.append(new_name)
-
-    design_df = design_df.rename(columns=rename_map)
-    design_colnames = sanitized_design_cols
+    if design is not None and design_columns is not None:
+        raise ValueError("Provide either design or design_columns, not both.")
+    if design_columns is not None:
+        warnings.warn(
+            "design_columns is deprecated; use the explicit design formula instead.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+    if metadata_columns is not None:
+        warnings.warn(
+            "metadata_columns is deprecated; use annotation_columns instead.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+    annotations = tuple(annotation_columns or metadata_columns or ())
+    if annotation_columns is not None and metadata_columns is not None:
+        raise ValueError("Provide annotation_columns; metadata_columns is a compatibility alias.")
+    if design is not None:
+        design_df, formula_terms, coefficient_map, reference = build_design_frame(
+            metadata, formula=design, annotation_columns=annotations
+        )
+        design_formula = design
+        design_colnames = list(design_df.columns)
+        dds_metadata = metadata.loc[:, list(dict.fromkeys([*formula_terms, *annotations]))].copy()
+    else:
+        design_cols = _select_design_columns(metadata, design_columns)
+        design_df = metadata.loc[:, design_cols].copy()
+        rename_map = {col: _sanitize_column(col) for col in design_df.columns}
+        design_df = design_df.rename(columns=rename_map)
+        design_colnames = list(design_df.columns)
+        formula_terms = tuple(design_cols)
+        coefficient_map = {str(key): str(value) for key, value in rename_map.items()}
+        reference = None
+        design_formula = "~ 0 + " + " + ".join(design_colnames)
+        dds_metadata = design_df
+    design_spec = make_design_spec(
+        design_df, formula=design_formula, terms=formula_terms,
+        coefficient_map=coefficient_map, reference=reference
+    )
 
     # Filter genes
     mask = pd.Series(True, index=counts_df.columns)
@@ -140,18 +174,34 @@ def prepare_deseq_dataset(
         raise ValueError("No genes remain after filtering; relax filtering thresholds or provide a gene list.")
 
     inference_kwargs = dict(inference_kwargs or {})
-    eff_cpus = _effective_n_jobs(inference_kwargs.get("n_cpus", 0))
+    eff_cpus = _effective_n_jobs(inference_kwargs.get("n_cpus"))
+    requested_cpus = inference_kwargs.get("n_cpus")
     inference_kwargs["n_cpus"] = eff_cpus
     inference = DefaultInference(**inference_kwargs)
 
-    design_formula = "~ 0 + " + " + ".join(design_colnames)
     dds = DeseqDataSet(
         counts=counts_df,
-        metadata=design_df,
+        metadata=dds_metadata,
         design=design_formula,
         refit_cooks=refit_cooks,
         inference=inference,
     )
+    dds._sc_robust_parent_ids = (pseudobulk.provenance.stable_id,)
+    dds._sc_robust_design_spec = design_spec
+    dds._sc_robust_diagnostics = {
+        "status": "prepared",
+        "fit_id": design_spec.fit_id,
+        "formula": design_spec.formula,
+        "input_gene_count": int(pseudobulk.counts.shape[1]),
+        "filtered_gene_count": int(pseudobulk.counts.shape[1] - counts_df.shape[1]),
+        "modeled_gene_count": int(counts_df.shape[1]),
+        "observations": {"count": int(len(metadata)), "per_condition": {term: {str(level): int(count) for level, count in metadata[term].astype(str).value_counts().items()} for term in formula_terms}},
+        "library_size": _numeric_summary(counts_df.sum(axis=1).to_numpy()),
+        "zero_library_count": int((counts_df.sum(axis=1) == 0).sum()),
+        "filtering": {"min_counts": min_counts, "min_variance": min_variance, "gene_list_requested": gene_list is not None},
+        "design": design_spec.to_dict(),
+        "execution": {"requested_n_cpus": requested_cpus, "resolved_n_cpus": eff_cpus},
+    }
     return dds
 
 
@@ -160,14 +210,67 @@ def fit_deseq_dataset(dds: "DeseqDataSet") -> "DeseqDataSet":
     Run the standard DESeq2 fitting steps on an existing dataset.
     """
     _, _, _ = _import_pydeseq2()
-    dds.fit_size_factors()
-    dds.fit_genewise_dispersions()
-    dds.fit_dispersion_prior()
-    dds.fit_MAP_dispersions()
-    dds.fit_LFC()
-    dds.calculate_cooks()
-    if getattr(dds, "refit_cooks", False):
-        dds.refit()
+    diagnostics = dict(getattr(dds, "_sc_robust_diagnostics", {}))
+    diagnostics.setdefault("status", "fitting")
+    try:
+        dds.fit_size_factors()
+        dds.fit_genewise_dispersions()
+        dds.fit_dispersion_prior()
+        dds.fit_MAP_dispersions()
+        dds.fit_LFC()
+        dds.calculate_cooks()
+        if getattr(dds, "refit_cooks", False):
+            dds.refit()
+    except Exception as exc:
+        diagnostics.update({"status": "failed", "error_type": type(exc).__name__, "error": str(exc)})
+        dds._sc_robust_diagnostics = diagnostics
+        raise DEFitError("DESeq2 fitting failed; inspect exc.diagnostics.", diagnostics) from exc
+    inference = getattr(dds, "inference", None)
+    fallback_records = []
+    for attribute in ("last_irls_diagnostics", "last_alpha_mle_diagnostics"):
+        records = getattr(inference, attribute, None) if inference is not None else None
+        if records:
+            fallback_records.extend(dict(record) for record in records)
+    diagnostics["fallbacks"] = fallback_records
+    diagnostics["fallback_count"] = len(fallback_records)
+    diagnostics["convergence"] = {
+        "genes": len(getattr(inference, "last_irls_diagnostics", ()) or ()) if inference is not None else 0,
+        "terminal_failures": 0,
+    }
+    diagnostics.update({"status": "fit", "error": None})
+    if hasattr(dds, "design_matrix"):
+        matrix = dds.design_matrix
+    elif hasattr(dds, "obsm") and "design_matrix" in dds.obsm:
+        matrix = dds.obsm["design_matrix"]
+    else:
+        matrix = None
+    if matrix is not None:
+        matrix = np.asarray(matrix)
+        diagnostics["design_matrix"] = {
+            "shape": [int(value) for value in matrix.shape],
+            "rank": int(np.linalg.matrix_rank(matrix)),
+            "nonfinite": int(np.size(matrix) - np.isfinite(matrix).sum()),
+        }
+    obsm = getattr(dds, "obsm", {})
+    varm = getattr(dds, "varm", {})
+    layers = getattr(dds, "layers", {})
+    diagnostics["size_factors"] = None
+    diagnostics["dispersions"] = None
+    diagnostics["cooks"] = None
+    if "size_factors" in obsm:
+        diagnostics["size_factors"] = _numeric_summary(obsm["size_factors"])
+    if "dispersions" in varm:
+        diagnostics["dispersions"] = _numeric_summary(varm["dispersions"])
+    if "cooks" in layers:
+        diagnostics["cooks"] = _numeric_summary(layers["cooks"])
+    try:
+        outliers = np.asarray(dds.cooks_outlier(), dtype=bool)
+        diagnostics["outliers"] = {"cooks_count": int(outliers.sum())}
+    except (AttributeError, TypeError, ValueError):
+        diagnostics["outliers"] = {"cooks_count": None}
+    replaced = varm.get("replaced") if hasattr(varm, "get") else None
+    diagnostics["outliers"]["refit_count"] = int(np.asarray(replaced, dtype=bool).sum()) if replaced is not None else None
+    dds._sc_robust_diagnostics = diagnostics
     return dds
 
 
@@ -205,6 +308,28 @@ def _run_single_contrast(
         ds._p_value_adjustment()
     ds.summary()
     return ds
+
+
+def _contrast_record(key: str, vector: np.ndarray, design_cols: Sequence[str], results_df: pd.DataFrame, *, numerator: Sequence[str], denominator: Sequence[str], reference: Optional[str] = None) -> dict[str, object]:
+    """Build one canonical, JSON-safe contrast diagnostic record."""
+    payload = {"key": key, "vector": [float(value) for value in vector], "design_columns": list(design_cols)}
+    nonfinite = {}
+    for column in ("log2FoldChange", "lfcSE", "stat", "pvalue", "padj"):
+        if column in results_df:
+            nonfinite[column] = int((~np.isfinite(pd.to_numeric(results_df[column], errors="coerce"))).sum())
+    return {
+        "contrast_id": stable_identifier("de-contrast", payload),
+        "key": key,
+        "numerator": list(numerator),
+        "denominator": list(denominator),
+        "reference": reference,
+        "coefficient_labels": list(design_cols),
+        "vector": payload["vector"],
+        "direction": "numerator_minus_denominator",
+        "status": "ok",
+        "nonfinite": nonfinite,
+    }
+
 
 
 def _standardize_gene_annotations(df: pd.DataFrame) -> pd.DataFrame:
@@ -299,7 +424,7 @@ def run_cluster_vs_all(
     plot_dir: Optional[Union[str, Path]] = None,
     save_dir: Optional[Union[str, Path]] = None,
     save_objects: bool = False,
-    n_jobs: int = 0,
+    n_jobs: int = 1,
 ) -> DEAnalysisResult:
     """Perform cluster-vs-all DE tests using a cell-means design matrix."""
     matrix = _ensure_design_matrix(dds)
@@ -350,12 +475,17 @@ def run_cluster_vs_all(
                 results_map[col] = (stats_obj, results_df)
 
     contrast_results: Dict[str, pd.DataFrame] = {}
+    contrast_diagnostics: MutableMapping[str, Mapping[str, object]] = {}
     artifacts: MutableMapping[str, object] = {}
 
     for column in design_cols:
         stats_obj, results_df = results_map[column]
         contrast_results[column] = results_df
         artifacts[column] = stats_obj
+        contrast_diagnostics[column] = _contrast_record(
+            column, dict(tasks)[column], design_cols, results_df,
+            numerator=[column], denominator=[item for item in design_cols if item != column],
+        )
 
         if plot_dir_path is not None:
             ma_obj = stats_obj.plot_MA()
@@ -388,12 +518,17 @@ def run_cluster_vs_all(
         },
         design_columns=design_cols,
         artifacts=artifacts,
+        design=getattr(getattr(dds, "_sc_robust_design_spec", None), "to_dict", lambda: None)(),
+        diagnostics=getattr(dds, "_sc_robust_diagnostics", {}),
+        contrast_diagnostics=contrast_diagnostics,
+        parent_ids=getattr(dds, "_sc_robust_parent_ids", ()),
     )
 
 
 def run_pairwise_de(
     dds: "DeseqDataSet",
-    cluster_pairs: Iterable[Tuple[str, str]],
+    cluster_pairs: Optional[Iterable[Tuple[str, str]]] = None,
+    pairs: Optional[Iterable[Tuple[str, str]]] = None,
     *,
     alpha: float = 0.05,
     gene_annotations: Optional[pd.DataFrame] = None,
@@ -402,15 +537,26 @@ def run_pairwise_de(
     plot_dir: Optional[Union[str, Path]] = None,
     save_dir: Optional[Union[str, Path]] = None,
     save_objects: bool = False,
-    n_jobs: int = 0,
+    n_jobs: int = 1,
 ) -> DEAnalysisResult:
     """
     Perform pairwise differential expression analysis between specified clusters.
     """
     matrix = _ensure_design_matrix(dds)
     design_cols = list(matrix.columns)
-    pairs = list(cluster_pairs)
+    if cluster_pairs is not None and pairs is not None:
+        raise ValueError("Provide either pairs or cluster_pairs, not both.")
+    if cluster_pairs is not None:
+        warnings.warn(
+            "cluster_pairs is deprecated; use pairs instead.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+    pairs = list(pairs if pairs is not None else (cluster_pairs or ()))
+    if not pairs:
+        raise ValueError("At least one pair is required.")
     contrast_results: Dict[str, pd.DataFrame] = {}
+    contrast_diagnostics: MutableMapping[str, Mapping[str, object]] = {}
     artifacts: MutableMapping[str, object] = {}
 
     plot_dir_path = Path(plot_dir) if plot_dir is not None else None
@@ -464,6 +610,10 @@ def run_pairwise_de(
         stats_obj, results_df = results_map[key]
         contrast_results[key] = results_df
         artifacts[key] = stats_obj
+        contrast_diagnostics[key] = _contrast_record(
+            key, dict((f"{left}_vs_{right}", vec) for left, right, vec in tasks)[key], design_cols, results_df,
+            numerator=[cluster1], denominator=[cluster2],
+        )
 
         if plot_dir_path is not None:
             ma_obj = stats_obj.plot_MA()
@@ -494,6 +644,10 @@ def run_pairwise_de(
         },
         design_columns=design_cols,
         artifacts=artifacts,
+        design=getattr(getattr(dds, "_sc_robust_design_spec", None), "to_dict", lambda: None)(),
+        diagnostics=getattr(dds, "_sc_robust_diagnostics", {}),
+        contrast_diagnostics=contrast_diagnostics,
+        parent_ids=getattr(dds, "_sc_robust_parent_ids", ()),
     )
 
 
@@ -507,7 +661,7 @@ def run_all_pairwise_de(
     plot_dir: Optional[Union[str, Path]] = None,
     save_dir: Optional[Union[str, Path]] = None,
     save_objects: bool = False,
-    n_jobs: int = 0,
+    n_jobs: int = 1,
 ) -> DEAnalysisResult:
     """Convenience wrapper that evaluates every pair of design columns."""
     matrix = _ensure_design_matrix(dds)

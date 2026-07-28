@@ -10,7 +10,7 @@ from concurrent.futures import ProcessPoolExecutor, ThreadPoolExecutor, as_compl
 from functools import lru_cache
 from importlib import resources
 from pathlib import Path
-from typing import Dict, Iterable, List, Optional, Sequence, Tuple, Union
+from typing import Dict, Iterable, List, Mapping, Optional, Sequence, Tuple, Union
 
 import numpy as np
 import pandas as pd
@@ -473,8 +473,28 @@ def run_pathway_enrichment_for_clusters(
     alpha: float = 0.05,
     n_jobs: int = 0,
     backend: str = "auto",
+    stat_col_by_contrast: Optional[Mapping[str, str]] = None,
+    parent_ids: Optional[Sequence[str]] = None,
 ) -> PathwayEnrichmentResult:
-    """Compute pathway enrichment across multiple contrasts and libraries."""
+    """Compute pathway enrichment across multiple contrasts and libraries.
+
+    ``stat_col_by_contrast`` overrides ``stat_col`` for individual contrasts.
+    Its keys must exactly match the supplied contrast mapping.
+    """
+    contrasts = set(de_by_cluster)
+    if stat_col_by_contrast is None:
+        resolved_stat_cols = {contrast: stat_col for contrast in de_by_cluster}
+    else:
+        unknown = sorted(set(stat_col_by_contrast) - contrasts)
+        missing = sorted(contrasts - set(stat_col_by_contrast))
+        if unknown or missing:
+            details = []
+            if unknown:
+                details.append(f"unknown contrasts: {unknown}")
+            if missing:
+                details.append(f"missing contrasts: {missing}")
+            raise ValueError("stat_col_by_contrast must cover each contrast exactly (" + "; ".join(details) + ")")
+        resolved_stat_cols = {contrast: stat_col_by_contrast[contrast] for contrast in de_by_cluster}
     resolved_libraries = resolve_pathway_libraries(libraries, base_dir=base_dir)
     if not resolved_libraries:
         return PathwayEnrichmentResult(
@@ -482,6 +502,7 @@ def run_pathway_enrichment_for_clusters(
             libraries=[],
             parameters={
                 "stat_col": stat_col,
+                "stat_col_by_contrast": dict(resolved_stat_cols),
                 "gene_col": gene_col,
                 "p_col": p_col,
                 "significance_col": significance_col,
@@ -490,6 +511,7 @@ def run_pathway_enrichment_for_clusters(
                 "backend": "sequential",
             },
             concatenated=pd.DataFrame(),
+            parent_ids=tuple(parent_ids or ()),
         )
 
     base_dir_path = Path(base_dir) if base_dir is not None else None
@@ -512,7 +534,7 @@ def run_pathway_enrichment_for_clusters(
                 contrast,
                 de_df,
                 library_gene_sets,
-                stat_col,
+                resolved_stat_cols[contrast],
                 gene_col,
                 p_col,
                 significance_col,
@@ -570,6 +592,7 @@ def run_pathway_enrichment_for_clusters(
         libraries=resolved_libraries,
         parameters={
             "stat_col": stat_col,
+            "stat_col_by_contrast": dict(resolved_stat_cols),
             "gene_col": gene_col,
             "p_col": p_col,
             "significance_col": significance_col,
@@ -578,4 +601,5 @@ def run_pathway_enrichment_for_clusters(
             "backend": resolved_backend,
         },
         concatenated=concatenated,
+        parent_ids=tuple(parent_ids or ()),
     )

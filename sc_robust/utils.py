@@ -1,3 +1,4 @@
+from importlib.metadata import PackageNotFoundError, version as package_version
 import dill
 import pandas as pd
 import numpy as np
@@ -44,7 +45,18 @@ def coo_matrix_to_igraph(coo_mat):
     
     return g
 
-def perform_leiden_clustering(coo_mat, resolution_parameter=1.0):
+def leiden_provenance(random_state=None):
+    """Return JSON-safe resolved Leiden seed and dependency versions."""
+    versions = {}
+    for name in ("leidenalg", "igraph"):
+        try:
+            versions[name] = package_version(name)
+        except PackageNotFoundError:
+            versions[name] = None
+    return {"random_state": None if random_state is None else int(random_state), "dependencies": versions}
+
+
+def perform_leiden_clustering(coo_mat, resolution_parameter=1.0, random_state=None, seed=None):
     """
     Convert the COO matrix to an igraph graph and perform Leiden clustering.
     
@@ -56,6 +68,9 @@ def perform_leiden_clustering(coo_mat, resolution_parameter=1.0):
       clusters: A list of lists, where each inner list contains the node indices of a cluster.
       partition: The partition object returned by the leidenalg library.
     """
+    if random_state is not None and seed is not None and int(random_state) != int(seed):
+        raise ValueError("random_state and seed conflict; provide one value.")
+    resolved_seed = random_state if random_state is not None else seed
     # Convert the COO matrix into an igraph graph
     g = coo_matrix_to_igraph(coo_mat)
     
@@ -64,6 +79,7 @@ def perform_leiden_clustering(coo_mat, resolution_parameter=1.0):
         g, 
         leidenalg.RBConfigurationVertexPartition, 
         weights='weight', 
+        **({"seed": int(resolved_seed)} if resolved_seed is not None else {}),
         resolution_parameter=resolution_parameter
     )
     
@@ -122,7 +138,9 @@ def single_graph_and_leiden(embedding_or_X: np.ndarray,
                             metric: str = 'cosine',
                             resolution: float = 1.0,
                             symmetrize: str = 'none',
-                            use_gpu: bool = False):
+                            use_gpu: bool = False,
+                            random_state: int = None,
+                            seed: int = None):
     """
     Convenience wrapper to build a single graph and run Leiden clustering.
 
@@ -136,7 +154,9 @@ def single_graph_and_leiden(embedding_or_X: np.ndarray,
         symmetrize=symmetrize,
         use_gpu=use_gpu,
     )
-    _, _, labels = perform_leiden_clustering(graph, resolution_parameter=resolution)
+    _, _, labels = perform_leiden_clustering(
+        graph, resolution_parameter=resolution, random_state=random_state, seed=seed
+    )
     return graph, labels
 
 

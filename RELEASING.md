@@ -7,6 +7,13 @@ This repo uses lightweight SemVer tags for published releases.
 - Version string lives in `sc_robust/_version.py` as `__version__ = "X.Y.Z"`.
 - Git release tags should be `vX.Y.Z` (e.g., `v0.2.0`).
 
+## Dependency reproducibility
+
+`uv.lock` is the dependency-resolution SSoT for supported Python 3.10-3.12.
+Validate it with `uv lock --check`; use `uv sync --frozen --all-extras` or `uv export
+--frozen --all-extras --format requirements-txt --no-emit-project` to reconstruct the
+reviewed environment. Do not regenerate it from an unrelated global environment.
+
 ## Release checklist
 
 1. Update version:

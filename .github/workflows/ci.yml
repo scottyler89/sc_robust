@@ -2,7 +2,7 @@ name: CI
 
 on:
   push:
-    branches: [main]
+    branches: [main, "feature/**"]
   pull_request:
 
 jobs:
@@ -23,10 +23,95 @@ jobs:
 
       - name: Install dependencies
         run: |
-          python -m pip install --upgrade pip
-          python -m pip install -r requirements.txt
-          python -m pip install -e .
+          python -m pip install --upgrade pip uv
+          uv lock --check
+          uv export --frozen --all-extras --format requirements-txt --no-hashes --no-emit-project > /tmp/sc-robust-lock.txt
+          python -m pip install -r /tmp/sc-robust-lock.txt
+          python -m pip install pytest
+          python -m pip install -e ".[full,test]"
 
       - name: Run tests
-        run: python -m pytest -q
+        run: |
+          set -o pipefail
+          python -m pytest -q 2>&1 | tee pytest-output.txt
 
+      - name: Publish test failure summary
+        if: failure()
+        run: |
+          echo "### Core pytest failure" >> "$GITHUB_STEP_SUMMARY"
+          sed -n "/= FAILURES =/," pytest-output.txt | head -120 | while IFS= read -r line; do echo "::error::$line"; done
+          grep -E "^(E   |[[:space:]]*File |[[:space:]]*raise |[[:space:]]*ValueError|[[:space:]]*LinAlgError|[[:space:]]*TypeError|[[:space:]]*RuntimeError)" pytest-output.txt | head -80 | while IFS= read -r line; do echo "::error::$line"; done
+          head -80 pytest-output.txt | while IFS= read -r line; do echo "::error::$line"; done
+          tail -80 pytest-output.txt | while IFS= read -r line; do echo "::error::$line"; done
+          tail -120 pytest-output.txt >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Build package
+        run: |
+          python -m pip install build twine
+          python -m build
+          python -m twine check dist/*
+          python -m venv --system-site-packages /tmp/sc-robust-wheel
+          /tmp/sc-robust-wheel/bin/python -m pip install --no-deps dist/*.whl
+          cd /tmp
+          /tmp/sc-robust-wheel/bin/python -c "import pydeseq2, sc_robust; assert sc_robust.__version__ == \"0.1.9\"; assert pydeseq2.__source_commit__ == \"8d1c39f7bf17aabe105458b02040f8c9770f8637\""
+          test -f /tmp/sc-robust-wheel/lib/python*/site-packages/sc_robust-*.dist-info/licenses/LICENSE
+
+
+  pathway:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install pathway-only environment
+        run: |
+          python -m pip install --upgrade pip uv
+          uv lock --check
+          uv export --frozen --extra test --format requirements-txt --no-hashes --no-emit-project > /tmp/sc-robust-pathway-lock.txt
+          python -m pip install -r /tmp/sc-robust-pathway-lock.txt
+          python -m pip install . --no-deps
+
+      - name: Run pathway-only tests
+        run: python -m pytest -q tests/test_pathway_import.py tests/test_pathways.py
+
+
+  de:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install resolved DE environment
+        run: |
+          python -m pip install --upgrade pip uv
+          uv lock --check
+          uv export --frozen --all-extras --format requirements-txt --no-hashes --no-emit-project > /tmp/sc-robust-lock.txt
+          python -m pip install -r /tmp/sc-robust-lock.txt
+          python -m pip install pytest
+          python -m pip install -e ".[full,test]"
+
+      - name: Verify PyDESeq2 resolution
+        run: python -c 'import pydeseq2; assert pydeseq2.__version__ == "0.5.0"; assert pydeseq2.__source_commit__ == "8d1c39f7bf17aabe105458b02040f8c9770f8637"'
+
+      - name: Run DE tests
+        run: |
+          set -o pipefail
+          python -m pytest -q tests/test_de_design.py tests/test_de_diagnostics.py tests/test_result_provenance.py 2>&1 | tee pytest-output.txt
+
+      - name: Publish DE failure summary
+        if: failure()
+        run: |
+          echo "### DE pytest failure" >> "$GITHUB_STEP_SUMMARY"
+          sed -n "/= FAILURES =/," pytest-output.txt | head -120 | while IFS= read -r line; do echo "::error::$line"; done
+          grep -E "^(E   |[[:space:]]*File |[[:space:]]*raise |[[:space:]]*ValueError|[[:space:]]*LinAlgError|[[:space:]]*TypeError|[[:space:]]*RuntimeError)" pytest-output.txt | head -80 | while IFS= read -r line; do echo "::error::$line"; done
+          head -80 pytest-output.txt | while IFS= read -r line; do echo "::error::$line"; done
+          tail -80 pytest-output.txt | while IFS= read -r line; do echo "::error::$line"; done
+          tail -120 pytest-output.txt >> "$GITHUB_STEP_SUMMARY"

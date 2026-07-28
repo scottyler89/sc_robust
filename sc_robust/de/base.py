@@ -12,6 +12,8 @@ import re
 import pandas as pd
 from matplotlib import pyplot as plt
 
+from ..provenance import ProvenanceEnvelope, canonical_json, hash_ordered_ids
+
 from .plots import (
     plot_pathway_density_difference,
     pathway_scurve_plot,
@@ -23,14 +25,62 @@ from .plots import (
 GENE_ANNOTATIONS_FILENAME = "ensg_annotations_abbreviated.txt"
 
 
+class _ProvenanceResultMixin:
+    """Shared immutable provenance behavior for stage result records."""
+
+    def __setattr__(self, name: str, value: Any) -> None:
+        if name in {"parameters", "provenance"} and name in self.__dict__:
+            raise AttributeError(f"{name} is an immutable result field.")
+        super().__setattr__(name, value)
+
+    def _initialize_provenance(self, *, stage: str, inputs: Mapping[str, Any], parent_ids: Sequence[str] = ()) -> None:
+        supplied = getattr(self, "provenance", None)
+        parameters = dict(getattr(self, "parameters", {}) or {})
+        if supplied is None:
+            envelope = ProvenanceEnvelope.create(stage=stage, parent_ids=parent_ids, algorithm=parameters, inputs=inputs, diagnostics={})
+        else:
+            if not isinstance(supplied, ProvenanceEnvelope):
+                raise TypeError("provenance must be a ProvenanceEnvelope.")
+            if parameters and dict(supplied.algorithm) != parameters:
+                raise ValueError("parameters must match provenance.algorithm; provide one canonical configuration.")
+            envelope = supplied
+        object.__setattr__(self, "provenance", envelope)
+        object.__setattr__(self, "parameters", envelope.algorithm)
+
+    def export_provenance(self) -> dict[str, Any]:
+        """Return the strict JSON-native provenance envelope."""
+        return self.provenance.to_dict()
+
+    def provenance_json(self, *, indent: int | None = 2) -> str:
+        """Return deterministic provenance JSON without lossy conversions."""
+        return canonical_json(self.export_provenance(), indent=indent)
+
+
+def _ordered_axis_input(values: Iterable[Any], *, domain: str) -> dict[str, Any]:
+    """Record an ordered axis once using the shared hash semantics."""
+    return hash_ordered_ids(values, domain=domain).to_dict()
+
+
 @dataclass
-class PseudobulkResult:
+class PseudobulkResult(_ProvenanceResultMixin):
     """Container for pseudobulk expression matrices and metadata."""
 
     counts: pd.DataFrame
     metadata: pd.DataFrame
     parameters: Mapping[str, Any] = field(default_factory=dict)
     graph_summary: Optional[Mapping[str, Any]] = None
+    provenance: Optional[ProvenanceEnvelope] = None
+
+    def __post_init__(self) -> None:
+        self._initialize_provenance(
+            stage="pseudobulk",
+            inputs={
+                "orientation": "cells_x_genes",
+                "count_shape": [int(item) for item in self.counts.shape],
+                "cell_axis": _ordered_axis_input(self.metadata.index, domain="pseudobulk.cell-axis"),
+                "gene_axis": _ordered_axis_input(self.counts.columns, domain="pseudobulk.gene-axis"),
+            },
+        )
 
     def to_dataframe(
         self,
@@ -63,7 +113,7 @@ class PseudobulkResult:
 
 
 @dataclass
-class DEAnalysisResult:
+class DEAnalysisResult(_ProvenanceResultMixin):
     """Structured output for differential expression runs."""
 
     dds: Any
@@ -71,6 +121,24 @@ class DEAnalysisResult:
     parameters: Mapping[str, Any] = field(default_factory=dict)
     design_columns: Optional[Sequence[str]] = None
     artifacts: Optional[MutableMapping[str, Any]] = None
+    design: Optional[Mapping[str, Any]] = None
+    diagnostics: Optional[Mapping[str, Any]] = None
+    contrast_diagnostics: Optional[Mapping[str, Mapping[str, Any]]] = None
+    parent_ids: Sequence[str] = field(default_factory=tuple)
+    provenance: Optional[ProvenanceEnvelope] = None
+
+    def __post_init__(self) -> None:
+        self._initialize_provenance(
+            stage="de",
+            parent_ids=self.parent_ids,
+            inputs={
+                "contrast_ids": _ordered_axis_input(self.contrast_results.keys(), domain="de.contrast-axis"),
+                "design_columns": _ordered_axis_input(self.design_columns or (), domain="de.design-columns"),
+                "design": dict(self.design or {}),
+                "diagnostics": dict(self.diagnostics or {}),
+                "contrasts": dict(self.contrast_diagnostics or {}),
+            },
+        )
 
     def get_summary(self, key: str) -> pd.DataFrame:
         """Return the results DataFrame for a specific contrast."""
@@ -144,13 +212,25 @@ class DEAnalysisResult:
 
 
 @dataclass
-class PathwayEnrichmentResult:
+class PathwayEnrichmentResult(_ProvenanceResultMixin):
     """Container for pathway enrichment outputs."""
 
     per_contrast: Mapping[str, pd.DataFrame]
     libraries: Sequence[str]
     parameters: Mapping[str, Any] = field(default_factory=dict)
     concatenated: Optional[pd.DataFrame] = None
+    parent_ids: Sequence[str] = field(default_factory=tuple)
+    provenance: Optional[ProvenanceEnvelope] = None
+
+    def __post_init__(self) -> None:
+        self._initialize_provenance(
+            stage="pathway",
+            parent_ids=self.parent_ids,
+            inputs={
+                "contrast_ids": _ordered_axis_input(self.per_contrast.keys(), domain="pathway.contrast-axis"),
+                "libraries": _ordered_axis_input(self.libraries, domain="pathway.library-axis"),
+            },
+        )
 
     def tidy(self) -> pd.DataFrame:
         """Return a concatenated long-form DataFrame (compute if needed)."""

@@ -320,8 +320,9 @@ def plot_pathway_enrichment(
     y_bg = kde_bg(x_grid)
     y_pw = kde_pw(x_grid)
 
-    bg_area = np.trapz(y_bg, x_grid)
-    pw_area = np.trapz(y_pw, x_grid)
+    integrate = np.trapezoid if hasattr(np, "trapezoid") else np.trapz
+    bg_area = integrate(y_bg, x_grid)
+    pw_area = integrate(y_pw, x_grid)
     if bg_area > 0:
         y_bg /= bg_area
     if pw_area > 0:

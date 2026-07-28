@@ -44,6 +44,11 @@ def test_robust_pipeline_null_reports_no_reproducible_pcs(tmp_path, monkeypatch)
     assert (tmp_path / "val" / "kept_features_manifest.json").exists()
     assert "adata" in ro.provenance
     assert "deps" in ro.provenance
+    assert ro.provenance.stage == "robust"
+    assert not hasattr(ro, "_provenance_state")
+    assert ro.provenance.inputs["orientation"] == "cells_x_genes"
+    assert ro.provenance.inputs["adata"]["obs_names_sha256"]["ordering"] == "ordered"
+    assert ro.provenance_json() == ro.provenance_json()
 
 
 def test_robust_pipeline_structured_builds_graph(tmp_path, monkeypatch):

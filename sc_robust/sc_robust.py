@@ -6,16 +6,13 @@ import logging
 from contextlib import contextmanager, redirect_stdout, redirect_stderr
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Union
-from count_split.count_split import multi_split
+from .count_split_adapter import split_counts
 from anticor_features.anticor_features import get_anti_cor_genes
 import numpy as np
 import os
 from .normalization import *
 from .find_consensus import find_pcs, find_consensus_graph
-from importlib import metadata
-import hashlib
-import datetime
-import json
+from .provenance import ProvenanceEnvelope, canonical_json, capture_dependency_versions, hash_ordered_ids, utc_now
 import time
 import warnings
 
@@ -249,12 +246,12 @@ class robust(object):
             raise AssertionError("norm_function arg must be one of:"+", ".join(sorted(list(NORM.keys()))))
         self.norm_function = norm_function
 
-        self.provenance = self._build_provenance()
+        self._provenance_state = self._build_provenance()
         start = time.perf_counter()
         with _temporary_numpy_seed(self.seed):
             self.do_splits()
             logger.info("step=do_splits elapsed_s=%.3f", time.perf_counter() - start)
-            self.provenance["splits_out"] = {
+            self._provenance_state["splits_out"] = {
                 "train_shape": tuple(getattr(self.train, "shape", ())),
                 "val_shape": tuple(getattr(self.val, "shape", ())),
                 "test_shape": tuple(getattr(self.test, "shape", ())),
@@ -265,7 +262,7 @@ class robust(object):
             logger.info("step=feature_select elapsed_s=%.3f", time.perf_counter() - start)
         train_feat_idxs = getattr(self, "train_feat_idxs", None)
         val_feat_idxs = getattr(self, "val_feat_idxs", None)
-        self.provenance.setdefault("feature_selection", {}).update(
+        self._provenance_state.setdefault("feature_selection", {}).update(
             {
                 "train_selected_n": int(len(train_feat_idxs)) if train_feat_idxs is not None else 0,
                 "val_selected_n": int(len(val_feat_idxs)) if val_feat_idxs is not None else 0,
@@ -274,8 +271,8 @@ class robust(object):
         )
         logger.info(
             "feature_selection_done train_selected_n=%s val_selected_n=%s",
-            self.provenance["feature_selection"].get("train_selected_n"),
-            self.provenance["feature_selection"].get("val_selected_n"),
+            self._provenance_state["feature_selection"].get("train_selected_n"),
+            self._provenance_state["feature_selection"].get("val_selected_n"),
         )
         if self.stop_after_feature_selection:
             # Explicit early-stop mode to allow regenerating/validating scratch artifacts
@@ -287,12 +284,13 @@ class robust(object):
             self.distances = None
             self.weights = None
             self.graph = None
-            self.provenance["status"] = "stopped_after_feature_selection"
+            self._provenance_state["status"] = "stopped_after_feature_selection"
             logger.info("stop_after_feature_selection=True; skipping PC validation and graph construction.")
+            self._finalize_provenance()
             return
         if (
-            self.provenance["feature_selection"].get("train_selected_n", 0) == 0
-            or self.provenance["feature_selection"].get("val_selected_n", 0) == 0
+            self._provenance_state["feature_selection"].get("train_selected_n", 0) == 0
+            or self._provenance_state["feature_selection"].get("val_selected_n", 0) == 0
         ):
             # Nothing to decompose -> previously this would crash inside TruncatedSVD(n_components=0).
             # Skip gracefully and point users to the likely causes/mitigations.
@@ -301,20 +299,21 @@ class robust(object):
             self.distances = None
             self.weights = None
             self.graph = None
-            self.provenance["status"] = "no_features_selected"
+            self._provenance_state["status"] = "no_features_selected"
             logger.warning(
                 "No features selected in at least one split; skipping PC validation and graph construction. "
                 "train_selected_n=%s val_selected_n=%s. "
                 "This can happen if filtering is too strict or removes most genes. "
                 "Mitigations: relax feature-selection thresholds in anticor_features, set pre_remove_pathways=[], "
                 "or provide/adjust an offline ID bank via id_bank_dir=... .",
-                self.provenance["feature_selection"].get("train_selected_n"),
-                self.provenance["feature_selection"].get("val_selected_n"),
+                self._provenance_state["feature_selection"].get("train_selected_n"),
+                self._provenance_state["feature_selection"].get("val_selected_n"),
             )
+            self._finalize_provenance()
             return
         self.find_reproducible_pcs()
         logger.info("step=find_reproducible_pcs elapsed_s=%.3f", time.perf_counter() - start)
-        self.provenance["pcs"] = {
+        self._provenance_state["pcs"] = {
             "train_pcs_shape": tuple(getattr(self.train_pcs, "shape", ())),
             "val_pcs_shape": tuple(getattr(self.val_pcs, "shape", ())),
         }
@@ -326,29 +325,39 @@ class robust(object):
             self.distances = None
             self.weights = None
             self.graph = None
-            self.provenance["status"] = "no_reproducible_pcs"
+            self._provenance_state["status"] = "no_reproducible_pcs"
             logger.warning(
                 "No reproducible PCs found across splits; graph construction skipped. "
                 "This is expected on null/no-structure datasets."
             )
+            self._finalize_provenance()
             return
         self.get_consensus_graph()
         logger.info("step=get_consensus_graph elapsed_s=%.3f", time.perf_counter() - start)
-        self.provenance.setdefault("graph", {})
-        self.provenance["graph"].update(
+        self._provenance_state.setdefault("graph", {})
+        self._provenance_state["graph"].update(
             {
                 "shape": tuple(getattr(self.graph, "shape", ())),
                 "nnz": int(getattr(self.graph, "nnz", 0)),
             }
         )
+        self._finalize_provenance()
         return
     #
     #
+    def export_provenance(self) -> Dict[str, Any]:
+        """Return the strict JSON-native robust provenance envelope."""
+        return self.provenance.to_dict()
+
+    def provenance_json(self, *, indent: int | None = 2) -> str:
+        """Return deterministic robust provenance JSON."""
+        return canonical_json(self.export_provenance(), indent=indent)
+
     def save(self, f):
         """Save the robust object to a file using dill.
 
         If `scratch_dir` is set and gene-module artifacts exist on disk, their paths
-        are attached to `self.provenance` so downstream users can discover/reuse them
+        are attached to the immutable provenance envelope so downstream users can discover/reuse them
         after re-loading the object.
         """
         try:
@@ -357,11 +366,13 @@ class robust(object):
             # Best-effort only: saving the robust object should not fail due to
             # missing optional post-analysis artifacts.
             pass
+        if hasattr(self, "_provenance_state") and hasattr(self, "original_ad"):
+            self._finalize_provenance()
         with open(f, 'wb') as file:
             dill.dump(self, file)
 
     def _attach_gene_module_artifacts(self) -> None:
-        """Record any gene-module artifacts present under `scratch_dir` (best-effort)."""
+        """Record gene-module artifacts without retaining mutable provenance state."""
         if getattr(self, "scratch_dir", None) is None:
             return
         scratch_dir = Path(self.scratch_dir)
@@ -377,9 +388,17 @@ class robust(object):
         present = {k: str(p) for k, p in expected.items() if p.exists()}
         if not present:
             return
-        self.provenance.setdefault("gene_modules", {})
-        self.provenance["gene_modules"]["artifacts"] = present
-        # Also store on the object for convenience after dill load.
+        if not hasattr(self, "_provenance_state") and isinstance(getattr(self, "provenance", None), ProvenanceEnvelope):
+            diagnostics = dict(self.provenance.diagnostics)
+            diagnostics.setdefault("gene_modules", {})["artifacts"] = present
+            self.provenance = self.provenance.with_diagnostics(diagnostics)
+        else:
+            if not hasattr(self, "_provenance_state"):
+                legacy = getattr(self, "provenance", {})
+                self._provenance_state = dict(legacy) if isinstance(legacy, dict) else {}
+            self._provenance_state.setdefault("gene_modules", {})["artifacts"] = present
+            if not hasattr(self, "original_ad"):
+                self.provenance = self._provenance_state
         self.gene_module_artifacts = present
 
     def run_gene_modules(
@@ -417,43 +436,27 @@ class robust(object):
         self._attach_gene_module_artifacts()
         return {k: str(v) for k, v in paths.items()}
 
-    def _hash_strings(self, values: List[str]) -> str:
-        h = hashlib.sha256()
-        for v in values:
-            h.update(v.encode("utf-8", errors="ignore"))
-            h.update(b"\0")
-        return h.hexdigest()
-
-    def _safe_pkg_version(self, name: str) -> Optional[str]:
-        try:
-            return metadata.version(name)
-        except Exception:
-            return None
-
     def _build_provenance(self) -> Dict[str, Any]:
-        """Capture lightweight provenance for reproducibility and debugging."""
-        now = datetime.datetime.now(datetime.timezone.utc).isoformat()
+        """Capture the mutable build snapshot before freezing it into an envelope."""
         adata = self.original_ad
-        n_obs = getattr(adata, "n_obs", None)
-        n_vars = getattr(adata, "n_vars", None)
         x = getattr(adata, "X", None)
-        x_shape = tuple(getattr(x, "shape", ())) if x is not None else None
 
-        obs_names = getattr(adata, "obs_names", None)
-        var_names = getattr(adata, "var_names", None)
-        obs_hash = None
-        var_hash = None
-        try:
-            if obs_names is not None:
-                obs_hash = self._hash_strings([str(x) for x in list(obs_names)])
-            if var_names is not None:
-                var_hash = self._hash_strings([str(x) for x in list(var_names)])
-        except Exception:
-            # Hashing is best-effort; skip if AnnData-like does not support iteration safely.
-            pass
+        def axis_hash(values, domain):
+            if values is None:
+                return None
+            try:
+                return hash_ordered_ids([str(value) for value in list(values)], domain=domain).to_dict()
+            except (TypeError, ValueError):
+                return None
 
+        dependencies = capture_dependency_versions(
+            [
+                "sc_robust", "anticor_features", "count_split", "numpy", "scipy",
+                "torch", "faiss-cpu", "faiss", "igraph", "leidenalg",
+            ]
+        )
         return {
-            "created_utc": now,
+            "created_utc": utc_now(),
             "seed": self.seed,
             "splits": list(self.splits) if self.splits is not None else None,
             "pc_max": self.pc_max,
@@ -462,31 +465,51 @@ class robust(object):
             "initial_k": self.initial_k,
             "do_plot": bool(self.do_plot),
             "adata": {
-                "n_obs": n_obs,
-                "n_vars": n_vars,
-                "X_shape": x_shape,
-                "obs_names_sha256": obs_hash,
-                "var_names_sha256": var_hash,
+                "n_obs": getattr(adata, "n_obs", None),
+                "n_vars": getattr(adata, "n_vars", None),
+                "X_shape": tuple(getattr(x, "shape", ())) if x is not None else None,
+                "obs_names_sha256": axis_hash(getattr(adata, "obs_names", None), "robust.cell-axis"),
+                "var_names_sha256": axis_hash(getattr(adata, "var_names", None), "robust.gene-axis"),
             },
-            "deps": {
-                "sc_robust": self._safe_pkg_version("sc_robust"),
-                "anticor_features": self._safe_pkg_version("anticor_features"),
-                "count_split": self._safe_pkg_version("count_split"),
-                "numpy": self._safe_pkg_version("numpy"),
-                "scipy": self._safe_pkg_version("scipy"),
-                "torch": self._safe_pkg_version("torch"),
-                "faiss-cpu": self._safe_pkg_version("faiss-cpu"),
-                "faiss": self._safe_pkg_version("faiss"),
-                "igraph": self._safe_pkg_version("igraph"),
-                "leidenalg": self._safe_pkg_version("leidenalg"),
-            },
+            "deps": dependencies,
             "anticor_options": dict(self.anticor_options),
         }
 
+    def _finalize_provenance(self) -> None:
+        """Freeze the internal build record into the canonical stage envelope."""
+        state = self._provenance_state
+        algorithm = {
+            "seed": self.seed,
+            "splits": state.get("splits"),
+            "pc_max": self.pc_max,
+            "norm_function": self.norm_function,
+            "species": self.species,
+            "initial_k": self.initial_k,
+            "do_plot": bool(self.do_plot),
+            "count_split_bin_size": self.count_split_bin_size,
+            "count_split_quiet": self.count_split_quiet,
+            "stop_after_feature_selection": self.stop_after_feature_selection,
+            "anticor_options": self.anticor_options,
+        }
+        diagnostics = {
+            key: value
+            for key, value in state.items()
+            if key not in {"created_utc", "seed", "splits", "pc_max", "norm_function", "species", "initial_k", "do_plot", "anticor_options", "adata", "deps"}
+        }
+        self.provenance = ProvenanceEnvelope.create(
+            stage="robust",
+            algorithm=algorithm,
+            inputs={"orientation": "cells_x_genes", "adata": state["adata"]},
+            environment=state["deps"],
+            execution={"requested_seed": self.seed},
+            diagnostics=diagnostics,
+            created_utc=state["created_utc"],
+        )
+        del self._provenance_state
+
     def _write_json(self, path: Path, payload: Dict[str, Any]) -> None:
         path.parent.mkdir(parents=True, exist_ok=True)
-        with path.open("w", encoding="utf-8") as handle:
-            json.dump(payload, handle, indent=2, sort_keys=True, default=str)
+        path.write_text(canonical_json(payload, indent=2), encoding="utf-8")
 
     def _record_feature_selection_manifest(
         self,
@@ -510,7 +533,7 @@ class robust(object):
             kept_features_order = []
 
         manifest = {
-            "created_utc": datetime.datetime.now(datetime.timezone.utc).isoformat(),
+            "created_utc": utc_now(),
             "split": split,
             "seed": self.seed,
             "species": self.species,
@@ -526,7 +549,7 @@ class robust(object):
             manifest["pathway_removal"] = pathway_removal
         out_path = scratch_dir / "kept_features_manifest.json"
         self._write_json(out_path, manifest)
-        self.provenance.setdefault("artifacts", {})[f"feature_selection_manifest_{split}"] = str(out_path)
+        self._provenance_state.setdefault("artifacts", {})[f"feature_selection_manifest_{split}"] = str(out_path)
     #
     #
     def do_splits(self):
@@ -544,27 +567,20 @@ class robust(object):
             self.count_split_quiet,
         )
         with _maybe_silence_stdout(self.count_split_quiet):
-            if len(self.splits)==3:
-                self.train, self.val, self.test = multi_split(
-                    self.original_ad.X.T,
-                    percent_vect=self.splits,
+            if len(self.splits) == 3:
+                self.train, self.val, self.test = split_counts(
+                    self.original_ad.X, self.splits, seed=self.seed,
                     bin_size=self.count_split_bin_size,
                 )
-            elif len(self.splits)==2:
-                # count_split expects samples in columns (cells) and variables in rows (genes).
-                # AnnData stores X as cells×genes, so we pass X.T here for consistency with 3-way splits.
-                self.train, self.val = multi_split(
-                    self.original_ad.X.T,
-                    percent_vect=self.splits,
+            elif len(self.splits) == 2:
+                self.train, self.val = split_counts(
+                    self.original_ad.X, self.splits, seed=self.seed,
                     bin_size=self.count_split_bin_size,
                 )
                 self.test = copy(self.val)
             else:
                 raise AssertionError("Number of splits must be 2 or 3.")
-        # The count splitting assumes samples (cells) are in columns, but convention has flipped now
-        self.train = self.train.T
-        self.val = self.val.T
-        self.test = self.test.T
+        # split_counts already returns cells x genes.
         logger.info(
             "count_split_done train_shape=%s val_shape=%s test_shape=%s",
             tuple(getattr(self.train, "shape", ())),
@@ -604,6 +620,9 @@ class robust(object):
           - Populates `train_feature_df`, `val_feature_df` (pandas DataFrames)
             and `train_feat_idxs`, `val_feat_idxs` (numpy indices of selected).
         """
+        if not hasattr(self, "_provenance_state"):
+            legacy = getattr(self, "provenance", {})
+            self._provenance_state = dict(legacy) if isinstance(legacy, dict) else {}
         if subset_idxs is None:
             subset_idxs = np.arange(self.train.shape[0])
         logger.info("feature_selection start subset_n=%s", len(subset_idxs))
@@ -644,7 +663,7 @@ class robust(object):
             ) from exc
         train_pathway_removal = _maybe_get_pathway_removal_metadata(self.train_feature_df)
         if train_pathway_removal is not None:
-            self.provenance.setdefault("feature_selection", {})["train_pathway_removal"] = train_pathway_removal
+            self._provenance_state.setdefault("feature_selection", {})["train_pathway_removal"] = train_pathway_removal
         self.train_feat_idxs = np.where(self.train_feature_df["selected"]==True)[0]
         self._record_feature_selection_manifest(
             split="train",
@@ -672,7 +691,7 @@ class robust(object):
             ) from exc
         val_pathway_removal = _maybe_get_pathway_removal_metadata(self.val_feature_df)
         if val_pathway_removal is not None:
-            self.provenance.setdefault("feature_selection", {})["val_pathway_removal"] = val_pathway_removal
+            self._provenance_state.setdefault("feature_selection", {})["val_pathway_removal"] = val_pathway_removal
         self.val_feat_idxs = np.where(self.val_feature_df["selected"]==True)[0]
         self._record_feature_selection_manifest(
             split="val",
@@ -681,6 +700,8 @@ class robust(object):
             subset_idxs=np.asarray(subset_idxs),
             scratch_dir=val_scratch_dir,
         )
+        if isinstance(getattr(self, "provenance", None), dict):
+            self.provenance = self._provenance_state
     #
     #
     def find_reproducible_pcs(self):
@@ -713,7 +734,7 @@ class robust(object):
             k = int(round(np.log(n), 0))
         k = min(int(k), 200, n)
         k = max(int(k), min(10, n))
-        self.provenance.setdefault("graph", {})
-        self.provenance["graph"]["metric"] = "cosine"
-        self.provenance["graph"]["k_used"] = int(k)
+        self._provenance_state.setdefault("graph", {})
+        self._provenance_state["graph"]["metric"] = "cosine"
+        self._provenance_state["graph"]["k_used"] = int(k)
         return

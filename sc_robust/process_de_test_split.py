@@ -196,7 +196,7 @@ def prep_sample_pseudobulk(in_graph, X, cells_per_pb=10, sample_vect=None, clust
         partitions.setdefault(part, []).append(cell_idx)
     
     # Precompute per-cell total counts (used for weighting coordinates and cell meta).
-    cell_total_counts = X.sum(axis=1)  # shape: (n_cells,)
+    cell_total_counts = np.asarray(X.sum(axis=1)).ravel()  # shape: (n_cells,)
     
     pb_ids = []
     pb_expr_list = []
@@ -257,7 +257,7 @@ def prep_sample_pseudobulk(in_graph, X, cells_per_pb=10, sample_vect=None, clust
     if gene_ids is not None:
         pb_exprs = pd.DataFrame(pb_exprs_arr, index=pb_ids, columns=gene_ids)
     else:
-        pb_exprs = pb_exprs_arr
+        pb_exprs = pd.DataFrame(pb_exprs_arr, index=pb_ids)
     
     annotation_df = pd.DataFrame(annotation_list)
     annotation_df[annotation_df.isna()]=0.0

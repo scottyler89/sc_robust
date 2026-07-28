@@ -7,12 +7,19 @@ Installation
 Option 1: pip (CPU-only FAISS)
 
 ```
-python -m venv .venv && source .venv/bin/activate  # optional
-pip install -r requirements.txt
+python -m venv .venv && source .venv/bin/activate
+python -m pip install ".[full]"
+
 ```
 
+For pathway-only use, install `sc_robust` without extras; the base package contains
+the pathway API and does not eagerly import the full graph/DE stack. For the full
+graph/DE pipeline, install `sc_robust[full]`.
+
+For reproducible CI or release reconstruction, install `uv`, run `uv lock --check`, and use `uv sync --frozen --all-extras` or `uv export --frozen --all-extras`.
+
 Notes:
-- The requirements pin `faiss-cpu`. On some platforms, pip wheels may be limited. If pip fails on FAISS, use Conda below.
+- The default package installs the pathway-analysis dependencies only. Install `sc_robust[full]` for graph, count-split, robust, and DE workflows. On some platforms, pip wheels may be limited. If pip fails on FAISS, use Conda below.
 - GPU FAISS is not required for this package; CPU FAISS works well for typical sizes.
 
 Option 2: Conda (recommended for FAISS/igraph)
@@ -22,7 +29,7 @@ conda create -n sc_robust python=3.10 -y
 conda activate sc_robust
 conda install -c conda-forge anndata numpy scipy matplotlib seaborn statsmodels networkx igraph leidenalg pymetis -y
 conda install -c pytorch faiss-cpu -y   # or: conda install -c conda-forge faiss
-pip install torch count_split anticor_features
+pip install "sc_robust[full]"
 ```
 
 Optional/adjacent tools
@@ -30,7 +37,7 @@ Optional/adjacent tools
 - umap-learn: if you want to run UMAP on precomputed graphs
 
 Python compatibility
-- Tested on Python 3.10+. Other versions may work, but 3.10 is recommended.
+- Supported and tested on Python 3.10-3.12. Other versions are not currently supported.
 
 Data conventions
 ----------------
@@ -423,10 +430,10 @@ print(all_pathways.head())
 
 Multiple contrasts with different score-column names
 
-This is the main current limitation: `run_pathway_enrichment_for_clusters(...)`
-accepts one `stat_col` per call, not a different score-column name for each
-contrast. If contrast A uses `t_cell_score` and contrast B uses `my_wald`, you
-must normalize the inputs before calling the helper.
+`run_pathway_enrichment_for_clusters(...)` accepts an optional
+`stat_col_by_contrast` mapping. If contrast A uses `t_cell_score` and contrast B
+uses `my_wald`, pass the mapping directly; the keys must exactly match the
+contrast names.
 
 Here is an explicit example of a per-contrast score-column map:
 
@@ -456,7 +463,21 @@ score_column_by_contrast = {
 }
 ```
 
-The two practical patterns are:
+Use the mapping directly:
+
+```python
+pathway_res = run_pathway_enrichment_for_clusters(
+    raw_de_by_contrast,
+    libraries=["h.all"],
+    stat_col_by_contrast=score_column_by_contrast,
+    gene_col="gene_name",
+    p_col="pvalue",
+    significance_col="padj",
+)
+```
+
+The alternative normalization pattern remains useful when downstream code
+requires one shared column name:
 
 1. Rename each contrast-specific score column to a common name before calling
    `run_pathway_enrichment_for_clusters(...)`.
@@ -539,3 +560,93 @@ Notes for handoff
 - Make sure the gene identifier column matches the namespace used by the GMT file, typically HGNC-style symbols in `gene_name`.
 - If you already have external DE results, prefer `run_pathway_enrichment(...)` or `run_pathway_enrichment_for_clusters(...)` over `perform_de_workflow(...)`.
 - The current `perform_de_workflow(...)` helper hardcodes `stat_col="stat"`, so it is not the right interface for heterogeneous external score columns.
+
+
+Tahoe Handoff APIs
+------------------
+
+For the production input, artifact, failure, and orchestration boundary
+contract, see [`docs/production_runbook.md`](docs/production_runbook.md).
+For the DE diagnostic field contract, see [`docs/diagnostics_schema.md`](docs/diagnostics_schema.md).
+
+The public contracts below use cells x genes counts and preserve reconstructable
+provenance. The examples are synthetic API templates; they do not require or
+reanalyze the LUAD dataset.
+
+Validated count splitting
+
+```python
+from sc_robust.count_split_adapter import split_counts
+
+train, validation = split_counts(
+    counts_cells_by_genes,
+    proportions=[0.5, 0.5],
+    seed=7,
+)
+```
+
+The adapter rejects non-finite, negative, non-integral, malformed, or invalid
+proportion inputs before calling `multi_split`, and checks exact element-wise
+conservation. Reproducibility means the same seed and the same ordered matrix;
+it does not claim order-invariance. Sparse inputs return sparse outputs.
+
+Metadata-driven pseudobulk boundaries
+
+```python
+from sc_robust.de import build_pseudobulk
+
+result = build_pseudobulk(
+    graph,
+    counts_cells_by_genes,
+    mode="topology",
+    cell_metadata=adata.obs,
+    cell_ids=adata.obs_names,
+    partition_by=["sample", "cluster"],
+    retain_source_cells=True,
+)
+```
+
+`partition_by` forms exact joint metadata keys and reuses the existing METIS
+builder independently per key. Results include `source_cell_ids`, a sorted
+membership hash, boundary factors, mode, seed, ID source, and source-list
+retention. `cells_per_pb` is advisory; inexact METIS sizes emit a warning.
+
+Explicit DE design and selected contrasts
+
+```python
+from sc_robust.de import prepare_deseq_dataset, fit_deseq_dataset, run_pairwise_de
+
+dds = prepare_deseq_dataset(
+    result,
+    design="~ 0 + condition",
+    annotation_columns=["sample", "cluster"],
+    inference_kwargs={"n_cpus": 4},
+)
+fit_deseq_dataset(dds)
+de = run_pairwise_de(dds, pairs=[("condition_treated", "condition_control")])
+print(de.export_provenance())
+```
+
+Formula terms determine the model; annotation columns are retained for reporting
+and are not silently added. `design_columns` remains a legacy no-intercept shorthand and emits a
+`DeprecationWarning`; use an explicit `design` formula instead.
+`metadata_columns` is a deprecated alias for `annotation_columns`, and
+`cluster_pairs` is a deprecated alias for `pairs`; both aliases emit actionable
+`DeprecationWarning`s. The two pair arguments cannot be supplied together. Fit and contrast diagnostics, stable IDs,
+resolved worker counts, and terminal failures are machine-readable.
+
+Leiden seed control
+
+```python
+from sc_robust.utils import single_graph_and_leiden
+graph, labels = single_graph_and_leiden(embedding, random_state=11)
+```
+
+Use `random_state` canonically; `seed` is a conflict-checked compatibility alias.
+
+Provenance and SSoT
+
+Treat each result provenance envelope as the single source of truth for inputs,
+configuration, identifiers, dependency versions, execution settings, and artifact
+identity. Export it with `result.provenance_json()` or `result.export_provenance()`
+rather than reconstructing configuration from mutable Python objects.
