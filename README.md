@@ -19,7 +19,7 @@ graph/DE pipeline, install `sc_robust[full]`.
 For reproducible CI or release reconstruction, install `uv`, run `uv lock --check`, and use `uv sync --frozen` or `uv export --frozen`.
 
 Notes:
-- The package installs its runtime dependencies, including `faiss-cpu`. On some platforms, pip wheels may be limited. If pip fails on FAISS, use Conda below.
+- The default package installs the pathway-analysis dependencies only. Install `sc_robust[full]` for graph, count-split, robust, and DE workflows. On some platforms, pip wheels may be limited. If pip fails on FAISS, use Conda below.
 - GPU FAISS is not required for this package; CPU FAISS works well for typical sizes.
 
 Option 2: Conda (recommended for FAISS/igraph)
@@ -29,7 +29,7 @@ conda create -n sc_robust python=3.10 -y
 conda activate sc_robust
 conda install -c conda-forge anndata numpy scipy matplotlib seaborn statsmodels networkx igraph leidenalg pymetis -y
 conda install -c pytorch faiss-cpu -y   # or: conda install -c conda-forge faiss
-pip install torch count_split anticor_features
+pip install "sc_robust[full]"
 ```
 
 Optional/adjacent tools
