@@ -30,7 +30,7 @@ Optional/adjacent tools
 - umap-learn: if you want to run UMAP on precomputed graphs
 
 Python compatibility
-- Tested on Python 3.10+. Other versions may work, but 3.10 is recommended.
+- Supported and tested on Python 3.10-3.12. Other versions are not currently supported.
 
 Data conventions
 ----------------

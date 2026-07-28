@@ -6,7 +6,7 @@ build-backend = "setuptools.build_meta"
 name = "sc_robust"
 dynamic = ["version", "dependencies", "readme"]
 description = "A statistically robust pipeline for building cell-cell graphs from single cell RNAseq"
-requires-python = ">=3.10"
+requires-python = ">=3.10,<3.13"
 authors = [{ name = "Scott Tyler", email = "scottyler89@gmail.com" }]
 license = "AGPL-3.0-only"
 license-files = ["LICENSE"]
