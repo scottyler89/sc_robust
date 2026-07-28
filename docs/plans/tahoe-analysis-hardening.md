@@ -713,6 +713,28 @@ Update protocol:
 - If blocked, record the concrete blocker, owner, and next decision needed.
 - Never mark `done` based only on implementation; acceptance and validation gate it.
 
+## Production Readiness Gate
+
+This gate extends M6 for package release readiness before Tahoe execution. It is
+tracked here as the sole status source; Tahoe/LUAD execution remains excluded.
+
+### Required work
+
+- [ ] Install documentation installs the package and documents core, DE, pathway-only, offline, and HPC routes.
+- [ ] Packaging has one metadata source, a distributable project license, explicit version/release policy, and a tested wheel/sdist installation path.
+- [ ] Runtime dependencies resolve from a reviewed reproducible constraint or lock strategy; CI validates that strategy.
+- [ ] Supported Python versions are explicit and tested, or the metadata is bounded to the tested range.
+- [ ] Per-contrast pathway statistic-column mappings are supported natively and tested.
+- [ ] Diagnostics and provenance have a stable user-facing schema example for success, filtering, fallback, and failure.
+- [ ] Production runbook documents input contracts, stable IDs, boundaries, artifacts, failure policy, and handoff to Tahoe orchestration.
+- [ ] Release CI validates the built wheel, metadata, license, imports, tests, and publication artifacts.
+
+### Validation
+
+Record focused tests, clean-environment wheel installation, package metadata
+checks, documentation review, and final CI URLs in the append-only progress log.
+Do not run or reanalyze Tahoe or LUAD for this gate.
+
 ## Release Gates
 
 A release candidate may be tagged only when:
