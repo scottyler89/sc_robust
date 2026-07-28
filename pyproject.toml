@@ -8,7 +8,8 @@ dynamic = ["version", "dependencies", "readme"]
 description = "A statistically robust pipeline for building cell-cell graphs from single cell RNAseq"
 requires-python = ">=3.10"
 authors = [{ name = "Scott Tyler", email = "scottyler89@gmail.com" }]
-license = { text = "AGPL-3.0-only" }
+license = "AGPL-3.0-only"
+license-files = ["LICENSE"]
 classifiers = [
   "Programming Language :: Python :: 3",
   "License :: OSI Approved :: GNU Affero General Public License v3",

@@ -7,12 +7,12 @@ Installation
 Option 1: pip (CPU-only FAISS)
 
 ```
-python -m venv .venv && source .venv/bin/activate  # optional
-pip install -r requirements.txt
+python -m venv .venv && source .venv/bin/activate
+python -m pip install .
 ```
 
 Notes:
-- The requirements pin `faiss-cpu`. On some platforms, pip wheels may be limited. If pip fails on FAISS, use Conda below.
+- The package installs its runtime dependencies, including `faiss-cpu`. On some platforms, pip wheels may be limited. If pip fails on FAISS, use Conda below.
 - GPU FAISS is not required for this package; CPU FAISS works well for typical sizes.
 
 Option 2: Conda (recommended for FAISS/igraph)
