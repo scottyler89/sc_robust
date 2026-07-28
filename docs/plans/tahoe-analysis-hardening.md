@@ -713,6 +713,10 @@ events and evidence; it does not redefine milestone status.
 | 2026-07-28 | PR | Verified packaging release gates remotely | `30379029928` | DE and core Python 3.10, 3.11, and 3.12 passed; Twine, installed-wheel import, vendored PyDESeq2 identity, and root license checks passed in CI |
 | 2026-07-28 | PR | Bounded supported Python versions to tested matrix | `cf0e104` | Metadata and README now declare Python `>=3.10,<3.13`; final CI rerun remains required for this head |
 
+| 2026-07-28 | PR | Added stable DE diagnostic summaries and schema documentation | `52df323` | Focused DE/design/provenance tests `28 passed`; full-suite validation follows; schema covers success, fallback, failure, filtering, libraries, outliers, and provenance IDs |
+| 2026-07-28 | PR | Added pathway-only/full install split and lazy imports | `9002642`, `9ccde84`, `7a1069e`, `e7e1835` | Base wheel metadata contains pathway dependencies; `[full]` contains pipeline dependencies; pathway import isolation and dependency declaration tests pass; `uv.lock` is the dependency SSoT |
+| 2026-07-28 | PR | Added pathway-only CI release gate | `f9abad2` | New base-only job installs from frozen lock and runs pathway import/enrichment tests; expanded remote CI remains open |
+
 Update protocol:
 
 - Set a milestone `in progress` in the tracker before implementation begins.
@@ -727,12 +731,12 @@ tracked here as the sole status source; Tahoe/LUAD execution remains excluded.
 
 ### Required work
 
-- [ ] Install documentation installs the package and documents core, DE, pathway-only, offline, and HPC routes.
+- [x] Install documentation installs the package and documents core, DE, pathway-only, offline, and HPC routes.
 - [x] Packaging has one metadata source, a distributable project license, explicit version/release policy, and a tested wheel/sdist installation path.
-- [ ] Runtime dependencies resolve from a reviewed reproducible constraint or lock strategy; CI validates that strategy.
+- [x] Runtime dependencies resolve from a reviewed reproducible constraint or lock strategy; CI validates that strategy.
 - [x] Supported Python versions are explicit and tested, or the metadata is bounded to the tested range.
 - [x] Per-contrast pathway statistic-column mappings are supported natively and tested.
-- [ ] Diagnostics and provenance have a stable user-facing schema example for success, filtering, fallback, and failure.
+- [x] Diagnostics and provenance have a stable user-facing schema example for success, filtering, fallback, and failure.
 - [x] Production runbook documents input contracts, stable IDs, boundaries, artifacts, failure policy, and handoff to Tahoe orchestration.
 - [x] Release CI validates the built wheel, metadata, license, imports, tests, and publication artifacts.
 
