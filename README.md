@@ -558,6 +558,9 @@ Notes for handoff
 Tahoe Handoff APIs
 ------------------
 
+For the production input, artifact, failure, and orchestration boundary
+contract, see [`docs/production_runbook.md`](docs/production_runbook.md).
+
 The public contracts below use cells x genes counts and preserve reconstructable
 provenance. The examples are synthetic API templates; they do not require or
 reanalyze the LUAD dataset.
