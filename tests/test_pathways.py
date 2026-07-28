@@ -336,3 +336,35 @@ def test_pathway_enrichment_heatmap_no_zscore(tmp_path):
         return_fig=True,
     )
     plt.close(fig)
+
+
+def test_per_contrast_stat_columns_are_supported(tmp_path):
+    tables = {
+        "contrast_a": _make_de_df(4).rename(columns={"stat": "t_score"}),
+        "contrast_b": _make_de_df(5).rename(columns={"stat": "wald_score"}),
+    }
+    gmt_path = tmp_path / "toy.gmt"
+    gmt_path.write_text("toy_pathway\tNA\tGENE1\tGENE2\tGENE3\n", encoding="utf-8")
+
+    result = run_pathway_enrichment_for_clusters(
+        tables,
+        libraries=[gmt_path.name],
+        base_dir=tmp_path,
+        stat_col_by_contrast={
+            "contrast_a": "t_score",
+            "contrast_b": "wald_score",
+        },
+        n_jobs=1,
+    )
+
+    assert result.parameters["stat_col_by_contrast"] == {
+        "contrast_a": "t_score",
+        "contrast_b": "wald_score",
+    }
+    with pytest.raises(ValueError, match="missing contrasts"):
+        run_pathway_enrichment_for_clusters(
+            tables,
+            libraries=[gmt_path.name],
+            base_dir=tmp_path,
+            stat_col_by_contrast={"contrast_a": "t_score"},
+        )

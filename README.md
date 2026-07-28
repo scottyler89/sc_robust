@@ -423,10 +423,10 @@ print(all_pathways.head())
 
 Multiple contrasts with different score-column names
 
-This is the main current limitation: `run_pathway_enrichment_for_clusters(...)`
-accepts one `stat_col` per call, not a different score-column name for each
-contrast. If contrast A uses `t_cell_score` and contrast B uses `my_wald`, you
-must normalize the inputs before calling the helper.
+`run_pathway_enrichment_for_clusters(...)` accepts an optional
+`stat_col_by_contrast` mapping. If contrast A uses `t_cell_score` and contrast B
+uses `my_wald`, pass the mapping directly; the keys must exactly match the
+contrast names.
 
 Here is an explicit example of a per-contrast score-column map:
 
@@ -456,7 +456,21 @@ score_column_by_contrast = {
 }
 ```
 
-The two practical patterns are:
+Use the mapping directly:
+
+```python
+pathway_res = run_pathway_enrichment_for_clusters(
+    raw_de_by_contrast,
+    libraries=["h.all"],
+    stat_col_by_contrast=score_column_by_contrast,
+    gene_col="gene_name",
+    p_col="pvalue",
+    significance_col="padj",
+)
+```
+
+The alternative normalization pattern remains useful when downstream code
+requires one shared column name:
 
 1. Rename each contrast-specific score column to a common name before calling
    `run_pathway_enrichment_for_clusters(...)`.
