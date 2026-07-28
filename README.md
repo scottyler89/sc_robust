@@ -8,9 +8,13 @@ Option 1: pip (CPU-only FAISS)
 
 ```
 python -m venv .venv && source .venv/bin/activate
-python -m pip install .
+python -m pip install ".[full]"
 
 ```
+
+For pathway-only use, install `sc_robust` without extras; the base package contains
+the pathway API and does not eagerly import the full graph/DE stack. For the full
+graph/DE pipeline, install `sc_robust[full]`.
 
 For reproducible CI or release reconstruction, install `uv`, run `uv lock --check`, and use `uv sync --frozen` or `uv export --frozen`.
 

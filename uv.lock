@@ -1844,6 +1844,22 @@ wheels = [
 name = "sc-robust"
 source = { editable = "." }
 dependencies = [
+    { name = "matplotlib", version = "3.10.9", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.11'" },
+    { name = "matplotlib", version = "3.11.1", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.11'" },
+    { name = "numpy", version = "2.2.6", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.11'" },
+    { name = "numpy", version = "2.4.6", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.11'" },
+    { name = "pandas", version = "2.3.3", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.12'" },
+    { name = "pandas", version = "3.0.5", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.12'" },
+    { name = "scikit-learn", version = "1.7.2", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.11'" },
+    { name = "scikit-learn", version = "1.9.0", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.11'" },
+    { name = "scipy", version = "1.15.3", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.11'" },
+    { name = "scipy", version = "1.17.1", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version == '3.11.*'" },
+    { name = "scipy", version = "1.18.0", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.12'" },
+    { name = "seaborn" },
+]
+
+[package.optional-dependencies]
+full = [
     { name = "anndata", version = "0.11.4", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.11'" },
     { name = "anndata", version = "0.12.19", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version == '3.11.*'" },
     { name = "anndata", version = "0.13.2", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.12'" },
@@ -1854,48 +1870,37 @@ dependencies = [
     { name = "h5py" },
     { name = "igraph" },
     { name = "leidenalg" },
-    { name = "matplotlib", version = "3.10.9", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.11'" },
-    { name = "matplotlib", version = "3.11.1", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.11'" },
     { name = "networkx", version = "3.4.2", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.11'" },
     { name = "networkx", version = "3.6.1", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.11'" },
     { name = "numba" },
-    { name = "numpy", version = "2.2.6", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.11'" },
-    { name = "numpy", version = "2.4.6", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.11'" },
-    { name = "pandas", version = "2.3.3", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.12'" },
-    { name = "pandas", version = "3.0.5", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.12'" },
     { name = "pymetis" },
-    { name = "scikit-learn", version = "1.7.2", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.11'" },
-    { name = "scikit-learn", version = "1.9.0", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.11'" },
-    { name = "scipy", version = "1.15.3", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.11'" },
-    { name = "scipy", version = "1.17.1", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version == '3.11.*'" },
-    { name = "scipy", version = "1.18.0", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.12'" },
-    { name = "seaborn" },
     { name = "statsmodels" },
     { name = "torch" },
 ]
 
 [package.metadata]
 requires-dist = [
-    { name = "anndata" },
-    { name = "anticor-features", specifier = ">=0.2.7" },
-    { name = "count-split" },
-    { name = "dill" },
-    { name = "faiss-cpu" },
-    { name = "h5py" },
-    { name = "igraph" },
-    { name = "leidenalg" },
+    { name = "anndata", marker = "extra == 'full'" },
+    { name = "anticor-features", marker = "extra == 'full'", specifier = ">=0.2.7" },
+    { name = "count-split", marker = "extra == 'full'" },
+    { name = "dill", marker = "extra == 'full'" },
+    { name = "faiss-cpu", marker = "extra == 'full'" },
+    { name = "h5py", marker = "extra == 'full'" },
+    { name = "igraph", marker = "extra == 'full'" },
+    { name = "leidenalg", marker = "extra == 'full'" },
     { name = "matplotlib" },
-    { name = "networkx" },
-    { name = "numba" },
+    { name = "networkx", marker = "extra == 'full'" },
+    { name = "numba", marker = "extra == 'full'" },
     { name = "numpy" },
     { name = "pandas" },
-    { name = "pymetis" },
+    { name = "pymetis", marker = "extra == 'full'" },
     { name = "scikit-learn" },
     { name = "scipy" },
     { name = "seaborn" },
-    { name = "statsmodels" },
-    { name = "torch" },
+    { name = "statsmodels", marker = "extra == 'full'" },
+    { name = "torch", marker = "extra == 'full'" },
 ]
+provides-extras = ["full"]
 
 [[package]]
 name = "scikit-learn"

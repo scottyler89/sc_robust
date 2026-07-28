@@ -25,10 +25,10 @@ jobs:
         run: |
           python -m pip install --upgrade pip uv
           uv lock --check
-          uv export --frozen --format requirements-txt --no-hashes --no-emit-project > /tmp/sc-robust-lock.txt
+          uv export --frozen --all-extras --format requirements-txt --no-hashes --no-emit-project > /tmp/sc-robust-lock.txt
           python -m pip install -r /tmp/sc-robust-lock.txt
           python -m pip install pytest
-          python -m pip install -e .
+          python -m pip install -e ".[full]"
 
       - name: Run tests
         run: |
@@ -71,10 +71,10 @@ jobs:
         run: |
           python -m pip install --upgrade pip uv
           uv lock --check
-          uv export --frozen --format requirements-txt --no-hashes --no-emit-project > /tmp/sc-robust-lock.txt
+          uv export --frozen --all-extras --format requirements-txt --no-hashes --no-emit-project > /tmp/sc-robust-lock.txt
           python -m pip install -r /tmp/sc-robust-lock.txt
           python -m pip install pytest
-          python -m pip install -e . -c constraints-de-ci.txt
+          python -m pip install -e ".[full]"
 
       - name: Verify PyDESeq2 resolution
         run: python -c 'import pydeseq2; assert pydeseq2.__version__ == "0.5.0"; assert pydeseq2.__source_commit__ == "8d1c39f7bf17aabe105458b02040f8c9770f8637"'

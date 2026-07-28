@@ -4,16 +4,21 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "sc_robust"
-dynamic = ["version", "dependencies", "readme"]
+dynamic = ["version", "readme"]
 description = "A statistically robust pipeline for building cell-cell graphs from single cell RNAseq"
 requires-python = ">=3.10,<3.13"
 authors = [{ name = "Scott Tyler", email = "scottyler89@gmail.com" }]
 license = "AGPL-3.0-only"
 license-files = ["LICENSE"]
+dependencies = ["numpy", "pandas", "scipy", "matplotlib", "seaborn", "scikit-learn"]
+
 classifiers = [
   "Programming Language :: Python :: 3",
   "Operating System :: OS Independent",
 ]
+
+[project.optional-dependencies]
+full = ["anndata", "count_split", "networkx", "statsmodels", "torch", "faiss-cpu", "anticor_features>=0.2.7", "igraph", "leidenalg", "pymetis", "dill", "numba", "h5py"]
 
 [project.urls]
 Homepage = "https://github.com/scottyler89/sc_robust"
@@ -27,7 +32,6 @@ include = ["sc_robust*", "pydeseq2*"]
 [tool.setuptools.dynamic]
 version = { attr = "sc_robust._version.__version__" }
 readme = { file = ["README.md"], content-type = "text/markdown" }
-dependencies = { file = ["requirements.txt"] }
 
 [tool.setuptools.package-data]
 sc_robust = [
