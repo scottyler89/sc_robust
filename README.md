@@ -16,7 +16,7 @@ For pathway-only use, install `sc_robust` without extras; the base package conta
 the pathway API and does not eagerly import the full graph/DE stack. For the full
 graph/DE pipeline, install `sc_robust[full]`.
 
-For reproducible CI or release reconstruction, install `uv`, run `uv lock --check`, and use `uv sync --frozen` or `uv export --frozen`.
+For reproducible CI or release reconstruction, install `uv`, run `uv lock --check`, and use `uv sync --frozen --all-extras` or `uv export --frozen --all-extras`.
 
 Notes:
 - The default package installs the pathway-analysis dependencies only. Install `sc_robust[full]` for graph, count-split, robust, and DE workflows. On some platforms, pip wheels may be limited. If pip fails on FAISS, use Conda below.

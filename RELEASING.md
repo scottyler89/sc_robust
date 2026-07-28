@@ -10,8 +10,8 @@ This repo uses lightweight SemVer tags for published releases.
 ## Dependency reproducibility
 
 `uv.lock` is the dependency-resolution SSoT for supported Python 3.10-3.12.
-Validate it with `uv lock --check`; use `uv sync --frozen` or `uv export
---frozen --format requirements-txt --no-emit-project` to reconstruct the
+Validate it with `uv lock --check`; use `uv sync --frozen --all-extras` or `uv export
+--frozen --all-extras --format requirements-txt --no-emit-project` to reconstruct the
 reviewed environment. Do not regenerate it from an unrelated global environment.
 
 ## Release checklist

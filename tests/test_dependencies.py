@@ -1,5 +1,8 @@
 import ast
-import tomllib
+try:
+    import tomllib
+except ModuleNotFoundError:  # Python 3.10 uses the declared test extra.
+    import tomli as tomllib
 import re
 import sys
 from pathlib import Path
