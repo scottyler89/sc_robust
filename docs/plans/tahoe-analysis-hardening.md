@@ -717,7 +717,7 @@ events and evidence; it does not redefine milestone status.
 | 2026-07-28 | PR | Added pathway-only/full install split and lazy imports | `9002642`, `9ccde84`, `7a1069e`, `e7e1835` | Base wheel metadata contains pathway dependencies; `[full]` contains pipeline dependencies; pathway import isolation and dependency declaration tests pass; `uv.lock` is the dependency SSoT |
 | 2026-07-28 | PR | Added pathway-only CI release gate | `f9abad2` | New base-only job installs from frozen lock and runs pathway import/enrichment tests; expanded remote CI remains open |
 
-| 2026-07-28 | PR | Final production-readiness validation | `47c45d3`, `30381436484` | Local suite `108 passed, 17 warnings`; `uv lock --check`; clean sdist/wheel build and `twine check` passed; CI green for Python 3.10, 3.11, 3.12, DE, and pathway-only jobs; Tahoe/LUAD execution excluded. |
+| 2026-07-28 | PR | Final production-readiness validation | `55bb604`, `30381750405` | Local suite `108 passed, 17 warnings`; `uv lock --check`; clean sdist/wheel build and `twine check` passed; CI green for Python 3.10, 3.11, 3.12, DE, and pathway-only jobs; Tahoe/LUAD execution excluded. |
 
 Update protocol:
 
