@@ -1,21 +1,10 @@
 import ast
 import tomllib
+import re
 import sys
 from pathlib import Path
 
 
-def _parse_requirements(path: Path) -> set[str]:
-    reqs: set[str] = set()
-    for line in path.read_text(encoding="utf-8").splitlines():
-        line = line.strip()
-        if not line or line.startswith("#"):
-            continue
-        for sep in ("==", ">=", "<=", "~=", ">", "<"):
-            if sep in line:
-                line = line.split(sep, 1)[0].strip()
-                break
-        reqs.add(line)
-    return reqs
 
 
 def _scan_top_level_imports(pkg_root: Path) -> set[str]:
@@ -34,12 +23,12 @@ def _scan_top_level_imports(pkg_root: Path) -> set[str]:
     return {m for m in imports if m and m not in stdlib and m != "sc_robust"}
 
 
-def test_imported_dependencies_are_listed_in_requirements():
+def test_imported_dependencies_are_declared_in_pyproject():
     repo_root = Path(__file__).resolve().parents[1]
     imports = _scan_top_level_imports(repo_root / "sc_robust")
     project = tomllib.loads((repo_root / "pyproject.toml").read_text(encoding="utf-8"))
-    reqs = set(project["project"]["dependencies"])
-    reqs.update(project["project"]["optional-dependencies"]["full"])
+    declared = list(project["project"]["dependencies"]) + list(project["project"]["optional-dependencies"]["full"])
+    reqs = {re.split(r"[<>=~!]", value, maxsplit=1)[0].strip() for value in declared}
 
     # Some pip packages expose different import names.
     rename = {
