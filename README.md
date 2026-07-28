@@ -9,6 +9,8 @@ Option 1: pip (CPU-only FAISS)
 ```
 python -m venv .venv && source .venv/bin/activate
 python -m pip install .
+
+For reproducible CI or release reconstruction, install `uv`, run `uv lock --check`, and use `uv sync --frozen` or `uv export --frozen` as described in the release documentation.
 ```
 
 Notes:

@@ -23,8 +23,10 @@ jobs:
 
       - name: Install dependencies
         run: |
-          python -m pip install --upgrade pip
-          python -m pip install -r requirements.txt
+          python -m pip install --upgrade pip uv
+          uv lock --check
+          uv export --frozen --format requirements-txt --no-hashes --no-emit-project > /tmp/sc-robust-lock.txt
+          python -m pip install -r /tmp/sc-robust-lock.txt
           python -m pip install pytest
           python -m pip install -e .
 
@@ -67,8 +69,10 @@ jobs:
 
       - name: Install resolved DE environment
         run: |
-          python -m pip install --upgrade pip
-          python -m pip install -r requirements.txt -c constraints-de-ci.txt
+          python -m pip install --upgrade pip uv
+          uv lock --check
+          uv export --frozen --format requirements-txt --no-hashes --no-emit-project > /tmp/sc-robust-lock.txt
+          python -m pip install -r /tmp/sc-robust-lock.txt
           python -m pip install pytest
           python -m pip install -e . -c constraints-de-ci.txt
 
