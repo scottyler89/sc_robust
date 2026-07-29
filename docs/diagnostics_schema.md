@@ -18,7 +18,8 @@ The fit-level record contains:
 - `design` with formula, terms, columns, rank, condition number, reference, and coefficient map.
 - `design_matrix` with shape, rank, condition number, and non-finite count after fitting.
 - `execution` with requested and resolved CPU counts.
-- `fallbacks`, `fallback_count`, and `convergence`.
+- `fallbacks`, `fallback_count`, and `convergence`. `fallback_count` counts
+  applied ridge/retry events, not diagnostic records.
 - `size_factors`, `dispersions`, and `cooks` numeric summaries; these are `null` when the backend does not expose the field.
 - `outliers.cooks_count` and `outliers.refit_count`.
 - `error`, `error_type`, and terminal status on failed fits.

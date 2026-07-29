@@ -36,8 +36,10 @@ Do not regenerate IDs from row positions after ingestion.
 3. Call `prepare_deseq_dataset` with an explicit formula such as
    `~ 0 + condition` and annotation-only columns separately.
 4. Call `fit_deseq_dataset`, then `run_pairwise_de` with only requested pairs.
-5. Export result provenance and diagnostics before writing result tables.
-6. Optionally call pathway helpers on exported DE tables, using
+5. If held-out counts are available, call `apply_pseudobulk_membership` with
+   the learned result before fitting the held-out DE dataset.
+6. Export result provenance and diagnostics before writing result tables.
+7. Optionally call pathway helpers on exported DE tables, using
    `stat_col_by_contrast` when score columns differ.
 
 ## Required Artifacts

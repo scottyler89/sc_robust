@@ -14,7 +14,8 @@ python -m pip install ".[full]"
 
 For pathway-only use, install `sc_robust` without extras; the base package contains
 the pathway API and does not eagerly import the full graph/DE stack. For the full
-graph/DE pipeline, install `sc_robust[full]`.
+graph/DE pipeline, install `sc_robust[full]`; this route pins the supported
+AnnData and Zarr compatibility range and includes the vendored DE backend dependencies.
 
 For reproducible CI or release reconstruction, install `uv`, run `uv lock --check`, and use `uv sync --frozen --all-extras` or `uv export --frozen --all-extras`.
 
@@ -629,10 +630,23 @@ print(de.export_provenance())
 Formula terms determine the model; annotation columns are retained for reporting
 and are not silently added. `design_columns` remains a legacy no-intercept shorthand and emits a
 `DeprecationWarning`; use an explicit `design` formula instead.
+Package-style coefficient aliases such as `condition_treated` resolve to the
+formulaic labels exposed by PyDESeq2, such as `condition[treated]`.
 `metadata_columns` is a deprecated alias for `annotation_columns`, and
 `cluster_pairs` is a deprecated alias for `pairs`; both aliases emit actionable
 `DeprecationWarning`s. The two pair arguments cannot be supplied together. Fit and contrast diagnostics, stable IDs,
 resolved worker counts, and terminal failures are machine-readable.
+
+To reuse learned pseudobulk memberships on held-out counts:
+
+```python
+from sc_robust.de import apply_pseudobulk_membership
+heldout_pseudobulk = apply_pseudobulk_membership(result, heldout_counts_cells_by_genes)
+```
+
+The held-out matrix must contain the same cell IDs and gene order as the
+learned result; the returned object retains the learned grouping and provenance
+parent link.
 
 Leiden seed control
 
