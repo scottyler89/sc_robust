@@ -721,6 +721,8 @@ events and evidence; it does not redefine milestone status.
 
 | 2026-07-29 | PR | Closed vendored PyDESeq2 full-install dependency gap | `e8b2fe4`, `3a9133f`, `30489343312` | Declared `formulaic>=1.0.2`, `formulaic-contrasts>=0.2.0`, and direct `joblib`; full DE suite `16 passed`, full suite `108 passed`; rebuilt wheel metadata and `twine check` passed; final CI green for DE, pathway, and Python 3.10, 3.11, and 3.12. |
 
+| 2026-07-29 | PR | Addressed integration feedback on DE, provenance, environment, and held-out membership | `629a2ba`, `f278e37` | Coefficient aliases resolve formulaic labels; fallback counts reflect applied events; pseudobulk count content is hashed; `[full]` pins `anndata==0.11.4` and `zarr<3`; `apply_pseudobulk_membership` is public and provenance-linked; local suite `112 passed`; CI follows. |
+
 Update protocol:
 
 - Set a milestone `in progress` in the tracker before implementation begins.
