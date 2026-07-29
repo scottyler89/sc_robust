@@ -83,6 +83,32 @@ def test_fallback_count_excludes_non_events():
     assert _count_fallback_events([{"irls_ridge_applied": False, "cox_reid_ridge_retry": False}]) == 0
     assert _count_fallback_events([{"irls_ridge_applied": True, "cox_reid_ridge_retry": False}]) == 1
 
+
+def test_vendored_fit_handles_ann_data_vector_shapes():
+    from sc_robust.de.base import PseudobulkResult
+    from sc_robust.de.differential_expression import fit_deseq_dataset, prepare_deseq_dataset
+
+    rng = np.random.default_rng(4)
+    counts = rng.poisson(20, size=(12, 30)).astype(np.int64)
+    counts[6:, :15] += 10
+    index = [f"pb{i}" for i in range(12)]
+    result = PseudobulkResult(
+        counts=pd.DataFrame(counts, index=index, columns=[f"g{i}" for i in range(30)]),
+        metadata=pd.DataFrame(
+            {"condition": pd.Categorical(["control"] * 6 + ["treated"] * 6)},
+            index=index,
+        ),
+    )
+    dds = prepare_deseq_dataset(
+        result,
+        design="~ 0 + condition",
+        min_counts=0,
+        min_variance=0,
+        inference_kwargs={"n_cpus": 1},
+    )
+    fit_deseq_dataset(dds)
+    assert dds.varm["non_zero"].shape[0] == 30
+
 def test_fit_success_collects_fallback_records(monkeypatch):
     from sc_robust.de import differential_expression as de
 

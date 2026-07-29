@@ -30,6 +30,42 @@ from pydeseq2.utils import trimmed_mean
 warnings.simplefilter("ignore", FutureWarning)
 
 
+def _varm_vector(adata: ad.AnnData, key: str) -> np.ndarray:
+    """Read a gene-wise vector independent of AnnData's varm shape."""
+    storage_key = f"_sc_robust_varm_{key}"
+    if storage_key in adata.var:
+        return np.asarray(adata.var[storage_key])
+    value = np.asarray(adata.varm[key])
+    return value[:, 0] if value.ndim == 2 and value.shape[1] == 1 else value
+
+
+def _set_varm_vector(adata: ad.AnnData, key: str, value) -> None:
+    """Store a gene-wise vector and mirror it through the public varm field."""
+    array = np.asarray(value)
+    if array.ndim != 1 or array.shape[0] != adata.n_vars:
+        raise ValueError(f"Expected {key!r} to have shape ({adata.n_vars},), got {array.shape}.")
+    adata.var[f"_sc_robust_varm_{key}"] = array
+    adata.varm[key] = array
+
+
+def _obsm_vector(adata: ad.AnnData, key: str) -> np.ndarray:
+    """Read an observation-wise vector independent of AnnData's obsm shape."""
+    storage_key = f"_sc_robust_obsm_{key}"
+    if storage_key in adata.obs:
+        return np.asarray(adata.obs[storage_key])
+    value = np.asarray(adata.obsm[key])
+    return value[:, 0] if value.ndim == 2 and value.shape[1] == 1 else value
+
+
+def _set_obsm_vector(adata: ad.AnnData, key: str, value) -> None:
+    """Store an observation-wise vector and mirror it through public obsm."""
+    array = np.asarray(value)
+    if array.ndim != 1 or array.shape[0] != adata.n_obs:
+        raise ValueError(f"Expected {key!r} to have shape ({adata.n_obs},), got {array.shape}.")
+    adata.obs[f"_sc_robust_obsm_{key}"] = array
+    adata.obsm[key] = array
+
+
 class DeseqDataSet(ad.AnnData):
     r"""A class to implement dispersion and log fold-change (LFC) estimation.
 
@@ -494,7 +530,7 @@ class DeseqDataSet(ad.AnnData):
                 / (4 * a0)
             )
         elif self.vst_fit_type == "mean":
-            gene_dispersions = self.varm["vst_genewise_dispersions"]
+            gene_dispersions = _varm_vector(self, "vst_genewise_dispersions")
             use_for_mean = gene_dispersions > 10 * self.min_disp
             mean_disp = trim_mean(gene_dispersions[use_for_mean], proportiontocut=0.001)
             return (
@@ -665,8 +701,8 @@ class DeseqDataSet(ad.AnnData):
             del log_counts
 
             # Normalize size factors to a geometric mean of 1 to match DESeq
-            self.obsm["size_factors"] = sf / (np.exp(np.mean(np.log(sf))))
-            self.layers["normed_counts"] = self.X / self.obsm["size_factors"][:, None]
+            _set_obsm_vector(self, "size_factors", sf / (np.exp(np.mean(np.log(sf)))))
+            self.layers["normed_counts"] = self.X / _obsm_vector(self, "size_factors")[:, None]
             self.logmeans = logmeans
 
         # Test whether it is possible to use median-of-ratios.
@@ -684,13 +720,14 @@ class DeseqDataSet(ad.AnnData):
             self.logmeans, self.filtered_genes = deseq2_norm_fit(self.X)
             _control_mask &= self.filtered_genes
 
-            (
-                self.layers["normed_counts"],
-                self.obsm["size_factors"],
-            ) = deseq2_norm_transform(self.X, self.logmeans, _control_mask)
+            normed_counts, size_factors = deseq2_norm_transform(
+                self.X, self.logmeans, _control_mask
+            )
+            self.layers["normed_counts"] = normed_counts
+            _set_obsm_vector(self, "size_factors", size_factors)
 
         end = time.time()
-        self.varm["_normed_means"] = self.layers["normed_counts"].mean(0)
+        _set_varm_vector(self, "_normed_means", self.layers["normed_counts"].mean(0))
 
         if not self.quiet:
             print(f"... done in {end - start:.2f} seconds.\n", file=sys.stderr)
@@ -711,9 +748,9 @@ class DeseqDataSet(ad.AnnData):
             self.fit_size_factors(fit_type=self.size_factors_fit_type)
 
         # Exclude genes with all zeroes
-        self.varm["non_zero"] = ~(self.X == 0).all(axis=0)
-        self.non_zero_idx = np.arange(self.n_vars)[self.varm["non_zero"]]
-        self.non_zero_genes = self.var_names[self.varm["non_zero"]]
+        _set_varm_vector(self, "non_zero", ~(self.X == 0).all(axis=0))
+        self.non_zero_idx = np.arange(self.n_vars)[_varm_vector(self, "non_zero")]
+        self.non_zero_genes = self.var_names[_varm_vector(self, "non_zero")]
 
         if isinstance(self.non_zero_genes, pd.MultiIndex):
             raise ValueError("non_zero_genes should not be a MultiIndex")
@@ -734,16 +771,16 @@ class DeseqDataSet(ad.AnnData):
         ):
             mu_hat_ = self.inference.lin_reg_mu(
                 counts=self.X[:, self.non_zero_idx],
-                size_factors=self.obsm["size_factors"],
+                size_factors=_obsm_vector(self, "size_factors"),
                 design_matrix=design_matrix,
                 min_mu=self.min_mu,
             )
         else:
             _, mu_hat_, _, _ = self.inference.irls(
                 counts=self.X[:, self.non_zero_idx],
-                size_factors=self.obsm["size_factors"],
+                size_factors=_obsm_vector(self, "size_factors"),
                 design_matrix=design_matrix,
-                disp=self.varm["_MoM_dispersions"][self.non_zero_idx],
+                disp=_varm_vector(self, "_MoM_dispersions")[self.non_zero_idx],
                 min_mu=self.min_mu,
                 beta_tol=self.beta_tol,
             )
@@ -752,7 +789,7 @@ class DeseqDataSet(ad.AnnData):
         disp_param_name = "vst_genewise_dispersions" if vst else "genewise_dispersions"
 
         self.layers[mu_param_name] = np.full((self.n_obs, self.n_vars), np.nan)
-        self.layers[mu_param_name][:, self.varm["non_zero"]] = mu_hat_
+        self.layers[mu_param_name][:, _varm_vector(self, "non_zero")] = mu_hat_
 
         del mu_hat_
 
@@ -763,7 +800,7 @@ class DeseqDataSet(ad.AnnData):
             counts=self.X[:, self.non_zero_idx],
             design_matrix=design_matrix,
             mu=self.layers[mu_param_name][:, self.non_zero_idx],
-            alpha_hat=self.varm["_MoM_dispersions"][self.non_zero_idx],
+            alpha_hat=_varm_vector(self, "_MoM_dispersions")[self.non_zero_idx],
             min_disp=self.min_disp,
             max_disp=self.max_disp,
         )
@@ -772,13 +809,15 @@ class DeseqDataSet(ad.AnnData):
         if not self.quiet:
             print(f"... done in {end - start:.2f} seconds.\n", file=sys.stderr)
 
-        self.varm[disp_param_name] = np.full(self.n_vars, np.nan)
-        self.varm[disp_param_name][self.varm["non_zero"]] = np.clip(
+        values = np.full(self.n_vars, np.nan)
+        values[_varm_vector(self, "non_zero")] = np.clip(
             dispersions_, self.min_disp, self.max_disp
         )
+        _set_varm_vector(self, disp_param_name, values)
 
-        self.varm["_genewise_converged"] = np.full(self.n_vars, np.nan)
-        self.varm["_genewise_converged"][self.varm["non_zero"]] = l_bfgs_b_converged_
+        values = np.full(self.n_vars, np.nan)
+        values[_varm_vector(self, "non_zero")] = l_bfgs_b_converged_
+        _set_varm_vector(self, "_genewise_converged", values)
 
     def fit_dispersion_trend(self, vst: bool = False) -> None:
         """Fit the dispersion trend curve.
@@ -849,12 +888,12 @@ class DeseqDataSet(ad.AnnData):
 
         # Fit dispersions to the curve, and compute log residuals
         disp_residuals = np.log(
-            self[:, self.non_zero_genes].varm["genewise_dispersions"]
-        ) - np.log(self[:, self.non_zero_genes].varm["fitted_dispersions"])
+            _varm_vector(self[:, self.non_zero_genes], "genewise_dispersions")
+        ) - np.log(_varm_vector(self[:, self.non_zero_genes], "fitted_dispersions"))
 
         # Compute squared log-residuals and prior variance based on genes whose
         # dispersions are above 100 * min_disp. This is to reproduce DESeq2's behaviour.
-        above_min_disp = self[:, self.non_zero_genes].varm["genewise_dispersions"] >= (
+        above_min_disp = _varm_vector(self[:, self.non_zero_genes], "genewise_dispersions") >= (
             100 * self.min_disp
         )
 
@@ -886,7 +925,7 @@ class DeseqDataSet(ad.AnnData):
             counts=self.X[:, self.non_zero_idx],
             design_matrix=design_matrix,
             mu=self.layers["_mu_hat"][:, self.non_zero_idx],
-            alpha_hat=self.varm["fitted_dispersions"][self.non_zero_idx],
+            alpha_hat=_varm_vector(self, "fitted_dispersions")[self.non_zero_idx],
             min_disp=self.min_disp,
             max_disp=self.max_disp,
             prior_disp_var=self.uns["prior_disp_var"].item(),
@@ -898,22 +937,29 @@ class DeseqDataSet(ad.AnnData):
         if not self.quiet:
             print(f"... done in {end-start:.2f} seconds.\n", file=sys.stderr)
 
-        self.varm["MAP_dispersions"] = np.full(self.n_vars, np.nan)
-        self.varm["MAP_dispersions"][self.varm["non_zero"]] = np.clip(
+        values = np.full(self.n_vars, np.nan)
+        values[_varm_vector(self, "non_zero")] = np.clip(
             dispersions_, self.min_disp, self.max_disp
         )
+        _set_varm_vector(self, "MAP_dispersions", values)
 
-        self.varm["_MAP_converged"] = np.full(self.n_vars, np.nan)
-        self.varm["_MAP_converged"][self.varm["non_zero"]] = l_bfgs_b_converged_
+        values = np.full(self.n_vars, np.nan)
+        values[_varm_vector(self, "non_zero")] = l_bfgs_b_converged_
+        _set_varm_vector(self, "_MAP_converged", values)
 
         # Filter outlier genes for which we won't apply shrinkage
-        self.varm["dispersions"] = self.varm["MAP_dispersions"].copy()
-        self.varm["_outlier_genes"] = np.log(self.varm["genewise_dispersions"]) > np.log(
-            self.varm["fitted_dispersions"]
-        ) + 2 * np.sqrt(self.uns["_squared_logres"])
-        self.varm["dispersions"][self.varm["_outlier_genes"]] = self.varm[
-            "genewise_dispersions"
-        ][self.varm["_outlier_genes"]]
+        _set_varm_vector(self, "dispersions", _varm_vector(self, "MAP_dispersions").copy())
+        _set_varm_vector(
+            self,
+            "_outlier_genes",
+            np.log(_varm_vector(self, "genewise_dispersions")) > np.log(
+                _varm_vector(self, "fitted_dispersions")
+            ) + 2 * np.sqrt(self.uns["_squared_logres"]),
+        )
+        values = _varm_vector(self, "dispersions").copy()
+        mask = _varm_vector(self, "_outlier_genes")
+        values[mask] = _varm_vector(self, "genewise_dispersions")[mask]
+        _set_varm_vector(self, "dispersions", values)
 
         if self.low_memory:
             del self.layers["_mu_hat"]
@@ -936,9 +982,9 @@ class DeseqDataSet(ad.AnnData):
         start = time.time()
         mle_lfcs_, mu_, hat_diagonals_, converged_ = self.inference.irls(
             counts=self.X[:, self.non_zero_idx],
-            size_factors=self.obsm["size_factors"],
+            size_factors=_obsm_vector(self, "size_factors"),
             design_matrix=design_matrix,
-            disp=self.varm["dispersions"][self.non_zero_idx],
+            disp=_varm_vector(self, "dispersions")[self.non_zero_idx],
             min_mu=self.min_mu,
             beta_tol=self.beta_tol,
         )
@@ -964,8 +1010,9 @@ class DeseqDataSet(ad.AnnData):
         self.obsm["_mu_LFC"] = mu_
         self.obsm["_hat_diagonals"] = hat_diagonals_
 
-        self.varm["_LFC_converged"] = np.full(self.n_vars, np.nan)
-        self.varm["_LFC_converged"][self.varm["non_zero"]] = converged_
+        values = np.full(self.n_vars, np.nan)
+        values[_varm_vector(self, "non_zero")] = converged_
+        _set_varm_vector(self, "_LFC_converged", values)
 
     def calculate_cooks(self) -> None:
         """Compute Cook's distance for outlier detection.
@@ -984,12 +1031,12 @@ class DeseqDataSet(ad.AnnData):
 
         # Calculate dispersion
         dispersions = robust_method_of_moments_disp(
-            self.layers["normed_counts"][:, self.varm["non_zero"]],
+            self.layers["normed_counts"][:, _varm_vector(self, "non_zero")],
             self.obsm["design_matrix"],
         )
 
         # Calculate the squared pearson residuals for non-zero features
-        squared_pearson_res = self.X[:, self.varm["non_zero"]] - self.obsm["_mu_LFC"]
+        squared_pearson_res = self.X[:, _varm_vector(self, "non_zero")] - self.obsm["_mu_LFC"]
         squared_pearson_res **= 2
 
         # Calculate the overdispersion parameter tau
@@ -1018,7 +1065,7 @@ class DeseqDataSet(ad.AnnData):
             del self.obsm["_hat_diagonals"]
 
         self.layers["cooks"] = np.full((self.n_obs, self.n_vars), np.nan)
-        self.layers["cooks"][:, self.varm["non_zero"]] = squared_pearson_res
+        self.layers["cooks"][:, _varm_vector(self, "non_zero")] = squared_pearson_res
 
         if not self.quiet:
             print(f"... done in {time.time()-start:.2f} seconds.\n", file=sys.stderr)
@@ -1033,24 +1080,21 @@ class DeseqDataSet(ad.AnnData):
         self._replace_outliers()
         if not self.quiet:
             print(
-                f"Replacing {sum(self.varm['replaced']) } outlier genes.\n",
+                f"Replacing {sum(_varm_vector(self, "replaced")) } outlier genes.\n",
                 file=sys.stderr,
             )
 
-        if sum(self.varm["replaced"]) > 0:
+        if sum(_varm_vector(self, "replaced")) > 0:
             # Refit dispersions and LFCs for genes that had outliers replaced
             self._refit_without_outliers()
         else:
             # Store the fact that no sample was refitted
-            self.varm["refitted"] = np.full(
-                self.n_vars,
-                False,
-            )
+            _set_varm_vector(self, "refitted", np.full(self.n_vars, False))
 
     def cooks_outlier(self):
         """Filter p-values based on Cooks outliers."""
         if "_pvalue_cooks_outlier" in self.varm.keys():
-            return self.varm["_pvalue_cooks_outlier"]
+            return _varm_vector(self, "_pvalue_cooks_outlier")
 
         num_samples = self.n_obs
         num_vars = self.obsm["design_matrix"].shape[-1]
@@ -1066,7 +1110,7 @@ class DeseqDataSet(ad.AnnData):
         # Take into account whether we already replaced outliers
         if (
             self.refit_cooks
-            and (self.varm["refitted"].sum() > 0)
+            and (_varm_vector(self, "refitted").sum() > 0)
             and "replace_cooks" in self.layers.keys()
         ):
             cooks_outlier = (
@@ -1090,8 +1134,8 @@ class DeseqDataSet(ad.AnnData):
         if self.low_memory and "replace_cooks" in self.layers.keys():
             del self.layers["replace_cooks"]
 
-        self.varm["_pvalue_cooks_outlier"] = cooks_outlier
-        return self.varm["_pvalue_cooks_outlier"]
+        _set_varm_vector(self, "_pvalue_cooks_outlier", cooks_outlier)
+        return _varm_vector(self, "_pvalue_cooks_outlier")
 
     def to_picklable_anndata(self) -> ad.AnnData:
         """Convert the DESeqDataSet to a picklable AnnData object.
@@ -1136,14 +1180,15 @@ class DeseqDataSet(ad.AnnData):
             self.obsm["design_matrix"].values,
         )
         mde = self.inference.fit_moments_dispersions(
-            normed_counts, self.obsm["size_factors"]
+            normed_counts, _obsm_vector(self, "size_factors")
         )
         alpha_hat = np.minimum(rde, mde)
 
-        self.varm["_MoM_dispersions"] = np.full(self.n_vars, np.nan)
-        self.varm["_MoM_dispersions"][self.varm["non_zero"]] = np.clip(
+        values = np.full(self.n_vars, np.nan)
+        values[_varm_vector(self, "non_zero")] = np.clip(
             alpha_hat, self.min_disp, self.max_disp
         )
+        _set_varm_vector(self, "_MoM_dispersions", values)
 
     def plot_dispersions(
         self, log: bool = True, save_path: str | None = None, **kwargs
@@ -1166,15 +1211,15 @@ class DeseqDataSet(ad.AnnData):
             Keyword arguments for the scatter plot.
         """
         disps = [
-            self.varm["genewise_dispersions"],
-            self.varm["dispersions"],
-            self.varm["fitted_dispersions"],
+            _varm_vector(self, "genewise_dispersions"),
+            _varm_vector(self, "dispersions"),
+            _varm_vector(self, "fitted_dispersions"),
         ]
         legend_labels = ["Estimated", "Final", "Fitted"]
         make_scatter(
             disps,
             legend_labels=legend_labels,
-            x_val=self.varm["_normed_means"],
+            x_val=_varm_vector(self, "_normed_means"),
             log=log,
             save_path=save_path,
             **kwargs,
@@ -1198,11 +1243,11 @@ class DeseqDataSet(ad.AnnData):
 
         # Exclude all-zero counts
         targets = pd.Series(
-            self[:, self.non_zero_genes].varm[disp_param_name].copy(),
+            _varm_vector(self[:, self.non_zero_genes], disp_param_name).copy(),
             index=self.non_zero_genes,
         )
         covariates = pd.Series(
-            1 / self[:, self.non_zero_genes].varm["_normed_means"],
+            1 / _varm_vector(self[:, self.non_zero_genes], "_normed_means"),
             index=self.non_zero_genes,
         )
 
@@ -1237,7 +1282,7 @@ class DeseqDataSet(ad.AnnData):
                 return
 
             # Filter out genes that are too far away from the curve before refitting
-            pred_ratios = self[:, covariates.index].varm[disp_param_name] / predictions
+            pred_ratios = _varm_vector(self[:, covariates.index], disp_param_name) / predictions
 
             targets.drop(
                 targets[(pred_ratios < 1e-4) | (pred_ratios >= 15)].index,
@@ -1253,11 +1298,12 @@ class DeseqDataSet(ad.AnnData):
         else:
             self.uns["trend_coeffs"] = pd.Series(coeffs, index=["a0", "a1"])
 
-            self.varm["fitted_dispersions"] = np.full(self.n_vars, np.nan)
+            values = np.full(self.n_vars, np.nan)
             self.uns["disp_function_type"] = "parametric"
-            self.varm["fitted_dispersions"][self.varm["non_zero"]] = self.disp_function(
-                self.varm["_normed_means"][self.varm["non_zero"]]
+            values[_varm_vector(self, "non_zero")] = self.disp_function(
+                _varm_vector(self, "_normed_means")[_varm_vector(self, "non_zero")]
             )
+            _set_varm_vector(self, "fitted_dispersions", values)
 
     def _fit_mean_dispersion_trend(self, vst: bool = False):
         """Use the mean of dispersions as trend curve.
@@ -1271,7 +1317,7 @@ class DeseqDataSet(ad.AnnData):
         disp_param_name = "vst_genewise_dispersions" if vst else "genewise_dispersions"
 
         self.uns["mean_disp"] = trim_mean(
-            self.varm[disp_param_name][self.varm[disp_param_name] > 10 * self.min_disp],
+            _varm_vector(self, disp_param_name)[_varm_vector(self, disp_param_name) > 10 * self.min_disp],
             proportiontocut=0.001,
         )
 
@@ -1279,7 +1325,7 @@ class DeseqDataSet(ad.AnnData):
             self.vst_fit_type = "mean"
         else:
             self.uns["disp_function_type"] = "mean"
-        self.varm["fitted_dispersions"] = np.full(self.n_vars, self.uns["mean_disp"])
+        _set_varm_vector(self, "fitted_dispersions", np.full(self.n_vars, self.uns["mean_disp"]))
 
     def _replace_outliers(self) -> None:
         """Replace values that are filtered out (based on Cooks) with imputed values."""
@@ -1291,32 +1337,29 @@ class DeseqDataSet(ad.AnnData):
         num_vars = self.obsm["design_matrix"].shape[1]
 
         # Check whether cohorts have enough samples to allow refitting
-        self.obsm["replaceable"] = n_or_more_replicates(
+        _set_obsm_vector(self, "replaceable", n_or_more_replicates(
             self.obsm["design_matrix"], self.min_replicates
-        ).values
+        ).values)
 
-        if self.obsm["replaceable"].sum() == 0:
+        if _obsm_vector(self, "replaceable").sum() == 0:
             # No sample can be replaced. Set self.replaced to False and exit.
-            self.varm["replaced"] = np.full(
-                self.n_vars,
-                False,
-            )
+            _set_varm_vector(self, "replaced", np.full(self.n_vars, False))
             return
 
         # Get positions of counts with cooks above threshold
         cooks_cutoff = f.ppf(0.99, num_vars, num_samples - num_vars)
         idx = self.layers["cooks"] > cooks_cutoff
-        self.varm["replaced"] = idx.any(axis=0)
+        _set_varm_vector(self, "replaced", idx.any(axis=0))
 
-        if sum(self.varm["replaced"] > 0):
+        if sum(_varm_vector(self, "replaced") > 0):
             # Compute replacement counts: trimmed means * size_factors
-            self.counts_to_refit = self[:, self.varm["replaced"]].copy()
+            self.counts_to_refit = self[:, _varm_vector(self, "replaced")].copy()
 
             trim_base_mean = pd.DataFrame(
                 cast(
                     np.ndarray,
                     trimmed_mean(
-                        self.counts_to_refit.X / self.obsm["size_factors"][:, None],
+                        self.counts_to_refit.X / _obsm_vector(self, "size_factors")[:, None],
                         trim=0.2,
                         axis=0,
                     ),
@@ -1326,7 +1369,7 @@ class DeseqDataSet(ad.AnnData):
 
             replacement_counts = (
                 pd.DataFrame(
-                    trim_base_mean.values * self.obsm["size_factors"],
+                    trim_base_mean.values * _obsm_vector(self, "size_factors"),
                     index=self.counts_to_refit.var_names,
                     columns=self.counts_to_refit.obs_names,
                 )
@@ -1335,9 +1378,9 @@ class DeseqDataSet(ad.AnnData):
             )
 
             self.counts_to_refit.X[
-                self.obsm["replaceable"][:, None] & idx[:, self.varm["replaced"]]
+                _obsm_vector(self, "replaceable")[:, None] & idx[:, _varm_vector(self, "replaced")]
             ] = replacement_counts.values[
-                self.obsm["replaceable"][:, None] & idx[:, self.varm["replaced"]]
+                _obsm_vector(self, "replaceable")[:, None] & idx[:, _varm_vector(self, "replaced")]
             ]
 
     def _refit_without_outliers(
@@ -1356,18 +1399,19 @@ class DeseqDataSet(ad.AnnData):
         new_all_zeroes = (self.counts_to_refit.X == 0).all(axis=0)
         self.new_all_zeroes_genes = self.counts_to_refit.var_names[new_all_zeroes]
 
-        self.varm["refitted"] = self.varm["replaced"].copy()
+        values = _varm_vector(self, "replaced").copy()
         # Only replace if genes are not all zeroes after outlier replacement
-        self.varm["refitted"][self.varm["refitted"]] = ~new_all_zeroes
+        values[_varm_vector(self, "refitted")] = ~new_all_zeroes
+        _set_varm_vector(self, "refitted", values)
 
         # Take into account new all-zero genes
         if new_all_zeroes.sum() > 0:
-            self.varm["_normed_means"][
+            _varm_vector(self, "_normed_means")[
                 self.var_names.get_indexer(self.new_all_zeroes_genes)
             ] = 0
             self.varm["LFC"].loc[self.new_all_zeroes_genes, :] = 0
 
-        if self.varm["refitted"].sum() == 0:  # if no gene can be refitted, we can skip
+        if _varm_vector(self, "refitted").sum() == 0:  # if no gene can be refitted, we can skip
             return
 
         self.counts_to_refit = self.counts_to_refit[:, ~new_all_zeroes].copy()
@@ -1392,9 +1436,9 @@ class DeseqDataSet(ad.AnnData):
         )
 
         # Use the same size factors
-        sub_dds.obsm["size_factors"] = self.counts_to_refit.obsm["size_factors"]
+        _set_obsm_vector(sub_dds, "size_factors", self.counts_to_refit.obsm["size_factors"])
         sub_dds.layers["normed_counts"] = (
-            sub_dds.X / sub_dds.obsm["size_factors"][:, None]
+            sub_dds.X / _obsm_vector(sub_dds, "size_factors")[:, None]
         )
 
         # Estimate gene-wise dispersions.
@@ -1407,10 +1451,12 @@ class DeseqDataSet(ad.AnnData):
             sub_dds.uns["trend_coeffs"] = self.uns["trend_coeffs"]
         elif sub_dds.uns["disp_function_type"] == "mean":
             sub_dds.uns["mean_disp"] = self.uns["mean_disp"]
-        sub_dds.varm["_normed_means"] = sub_dds.layers["normed_counts"].mean(0)
+        _set_varm_vector(sub_dds, "_normed_means", sub_dds.layers["normed_counts"].mean(0))
         # Reshape in case there's a single gene to refit
-        sub_dds.varm["fitted_dispersions"] = sub_dds.disp_function(
-            sub_dds.varm["_normed_means"]
+        _set_varm_vector(
+            sub_dds, "fitted_dispersions", sub_dds.disp_function(
+                _varm_vector(sub_dds, "_normed_means")
+            )
         )
 
         # Estimate MAP dispersions.
@@ -1424,20 +1470,25 @@ class DeseqDataSet(ad.AnnData):
         sub_dds.fit_LFC()
 
         # Replace values in main object
-        self.varm["_normed_means"][self.varm["refitted"]] = sub_dds.varm["_normed_means"]
-        self.varm["LFC"][self.varm["refitted"]] = sub_dds.varm["LFC"]
-        self.varm["genewise_dispersions"][self.varm["refitted"]] = sub_dds.varm[
-            "genewise_dispersions"
-        ]
-        self.varm["fitted_dispersions"][self.varm["refitted"]] = sub_dds.varm[
-            "fitted_dispersions"
-        ]
-        self.varm["dispersions"][self.varm["refitted"]] = sub_dds.varm["dispersions"]
+        values = _varm_vector(self, "_normed_means").copy()
+        values[mask] = _varm_vector(sub_dds, "_normed_means")
+        _set_varm_vector(self, "_normed_means", values)
+        self.varm["LFC"][_varm_vector(self, "refitted")] = sub_dds.varm["LFC"]
+        values = _varm_vector(self, "genewise_dispersions").copy()
+        mask = _varm_vector(self, "refitted")
+        values[mask] = _varm_vector(sub_dds, "genewise_dispersions")
+        _set_varm_vector(self, "genewise_dispersions", values)
+        values = _varm_vector(self, "fitted_dispersions").copy()
+        values[mask] = _varm_vector(sub_dds, "fitted_dispersions")
+        _set_varm_vector(self, "fitted_dispersions", values)
+        values = _varm_vector(self, "dispersions").copy()
+        values[mask] = _varm_vector(sub_dds, "dispersions")
+        _set_varm_vector(self, "dispersions", values)
 
         self.layers["replace_cooks"] = self.layers["cooks"].copy()
 
-        for col in np.where(self.varm["refitted"])[0]:
-            self.layers["replace_cooks"][self.obsm["replaceable"], col] = 0.0
+        for col in np.where(_varm_vector(self, "refitted"))[0]:
+            self.layers["replace_cooks"][_obsm_vector(self, "replaceable"), col] = 0.0
 
     def _fit_iterate_size_factors(self, niter: int = 10, quant: float = 0.95) -> None:
         """
@@ -1456,7 +1507,7 @@ class DeseqDataSet(ad.AnnData):
 
         """
         # Initialize size factors and normed counts fields
-        self.obsm["size_factors"] = np.ones(self.n_obs)
+        _set_obsm_vector(self, "size_factors", np.ones(self.n_obs))
         self.layers["normed_counts"] = self.X
 
         # Reduce the design matrix to an intercept and reconstruct at the end
@@ -1471,9 +1522,9 @@ class DeseqDataSet(ad.AnnData):
             nll = nb_nll(
                 counts=self[:, self.non_zero_genes].X,
                 mu=self[:, self.non_zero_genes].layers["_mu_hat"]
-                / self.obsm["size_factors"][:, None]
+                / _obsm_vector(self, "size_factors")[:, None]
                 * sf[:, None],
-                alpha=self[:, self.non_zero_genes].varm["dispersions"],
+                alpha=_varm_vector(self[:, self.non_zero_genes], "dispersions"),
             )
             # Take out the lowest likelihoods (highest neg) from the sum
             return np.sum(nll[nll < np.quantile(nll, quant)])
@@ -1484,8 +1535,8 @@ class DeseqDataSet(ad.AnnData):
 
             # Use a mean trend curve
             use_for_mean_genes = self.var_names[
-                (self.varm["genewise_dispersions"] > 10 * self.min_disp)
-                & self.varm["non_zero"]
+                (_varm_vector(self, "genewise_dispersions") > 10 * self.min_disp)
+                & _varm_vector(self, "non_zero")
             ]
 
             if len(use_for_mean_genes) == 0:
@@ -1496,26 +1547,26 @@ class DeseqDataSet(ad.AnnData):
                 break
 
             mean_disp = trim_mean(
-                self[:, use_for_mean_genes].varm["genewise_dispersions"],
+                _varm_vector(self[:, use_for_mean_genes], "genewise_dispersions"),
                 proportiontocut=0.001,
             )
 
-            self.varm["fitted_dispersions"] = np.ones(self.n_vars) * mean_disp
+            _set_varm_vector(self, "fitted_dispersions", np.ones(self.n_vars) * mean_disp)
             self.fit_dispersion_prior()
             self.fit_MAP_dispersions()
-            old_sf = self.obsm["size_factors"].copy()
+            old_sf = _obsm_vector(self, "size_factors").copy()
 
             # Fit size factors using MLE
             res = minimize(objective, np.log(old_sf), method="Powell")
 
-            self.obsm["size_factors"] = np.exp(res.x - np.mean(res.x))
+            _set_obsm_vector(self, "size_factors", np.exp(res.x - np.mean(res.x)))
 
             if not res.success:
                 print("A size factor fitting iteration failed.", file=sys.stderr)
                 break
 
             if (i > 1) and np.sum(
-                (np.log(old_sf) - np.log(self.obsm["size_factors"])) ** 2
+                (np.log(old_sf) - np.log(_obsm_vector(self, "size_factors"))) ** 2
             ) < 1e-4:
                 break
             elif i == niter - 1:
@@ -1526,7 +1577,7 @@ class DeseqDataSet(ad.AnnData):
         del self.obsm["design_matrix_buffer"]
 
         # Store normalized counts
-        self.layers["normed_counts"] = self.X / self.obsm["size_factors"][:, None]
+        self.layers["normed_counts"] = self.X / _obsm_vector(self, "size_factors")[:, None]
 
     def _check_full_rank_design(self):
         """Check that the design matrix has full column rank."""
