@@ -61,3 +61,16 @@ def test_sparse_counts_and_integer_boundary_factor():
     )
     assert set(result.metadata["batch"]) == {"1", "2"}
     assert set(result.metadata["source_cell_ids"].explode()) == set(metadata.index)
+
+def test_apply_pseudobulk_membership_to_held_out_counts():
+    from sc_robust.de.base import PseudobulkResult
+    from sc_robust.de.pseudobulk import apply_pseudobulk_membership
+
+    learned = PseudobulkResult(
+        counts=pd.DataFrame([[3, 5], [7, 11]], index=["pb-0", "pb-1"], columns=["g1", "g2"]),
+        metadata=pd.DataFrame({"source_cell_ids": [["c1", "c2"], ["c3"]]}, index=["pb-0", "pb-1"]),
+    )
+    held_out = pd.DataFrame([[10, 1], [2, 3], [4, 5]], index=["c1", "c2", "c3"], columns=["g1", "g2"])
+    result = apply_pseudobulk_membership(learned, held_out)
+    assert result.counts.loc["pb-0", "g1"] == 12
+    assert result.provenance.parent_ids == (learned.provenance.stable_id,)

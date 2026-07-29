@@ -17,6 +17,7 @@ from sc_robust.process_de_test_split import prep_sample_pseudobulk
 
 __all__ = [
     "filter_edges_within_clusters",
+    "apply_pseudobulk_membership",
     "build_pseudobulk",
     "plot_pseudobulk_scatter",
 ]
@@ -313,6 +314,84 @@ def build_pseudobulk(
         graph_summary=graph_summary,
     )
 
+
+def apply_pseudobulk_membership(
+    pseudobulk: PseudobulkResult,
+    counts: Any,
+    *,
+    cell_ids: Optional[Sequence[str]] = None,
+    gene_ids: Optional[Sequence[str]] = None,
+) -> PseudobulkResult:
+    """Apply learned source-cell membership to another cells-by-genes matrix.
+
+    The held-out matrix must contain exactly the learned source cell IDs. The
+    returned result preserves pseudobulk ordering and metadata while replacing
+    expression counts with sums from the supplied matrix.
+    """
+    if "source_cell_ids" not in pseudobulk.metadata.columns:
+        raise ValueError(
+            "Pseudobulk membership is unavailable; build with retain_source_cells=True "
+            "and explicit or metadata-backed cell IDs."
+        )
+    if isinstance(counts, pd.DataFrame):
+        heldout = counts.copy()
+        if cell_ids is not None:
+            if len(cell_ids) != len(heldout):
+                raise ValueError("cell_ids must match the held-out count rows.")
+            heldout.index = [str(value) for value in cell_ids]
+        else:
+            heldout.index = [str(value) for value in heldout.index]
+        if gene_ids is not None and list(map(str, heldout.columns)) != list(map(str, gene_ids)):
+            raise ValueError("gene_ids must match the held-out DataFrame columns when both are supplied.")
+    else:
+        array = np.asarray(counts)
+        if array.ndim != 2:
+            raise ValueError("Held-out counts must be a 2D cells-by-genes matrix.")
+        if cell_ids is None:
+            raise ValueError("cell_ids are required for array-like held-out counts.")
+        if len(cell_ids) != array.shape[0]:
+            raise ValueError("cell_ids must match the held-out count rows.")
+        columns = list(gene_ids) if gene_ids is not None else list(pseudobulk.counts.columns)
+        if len(columns) != array.shape[1]:
+            raise ValueError("gene_ids must match the held-out count columns.")
+        heldout = pd.DataFrame(array, index=[str(value) for value in cell_ids], columns=columns)
+    if heldout.index.has_duplicates:
+        raise ValueError("Held-out cell IDs must be unique.")
+    expected_members = []
+    memberships = []
+    for pb_id, row in pseudobulk.metadata.iterrows():
+        members = [str(value) for value in row["source_cell_ids"]]
+        if len(set(members)) != len(members):
+            raise ValueError(f"Pseudobulk {pb_id!r} has duplicate source cell IDs.")
+        memberships.append((pb_id, members))
+        expected_members.extend(members)
+    if len(set(expected_members)) != len(expected_members):
+        raise ValueError("Pseudobulk memberships overlap; each source cell must belong to one group.")
+    expected = set(expected_members)
+    observed = set(heldout.index)
+    if expected != observed:
+        missing = sorted(expected - observed)
+        extra = sorted(observed - expected)
+        raise ValueError(f"Held-out cell IDs do not match learned membership; missing={missing[:5]}, extra={extra[:5]}.")
+    expected_genes = list(map(str, pseudobulk.counts.columns))
+    if list(map(str, heldout.columns)) != expected_genes:
+        raise ValueError("Held-out gene IDs must match the learned pseudobulk gene order.")
+    aggregated = pd.DataFrame(
+        [heldout.loc[members].sum(axis=0) for _, members in memberships],
+        index=[pb_id for pb_id, _ in memberships],
+        columns=pseudobulk.counts.columns,
+    )
+    metadata = pseudobulk.metadata.copy()
+    metadata["total_count_sum"] = aggregated.sum(axis=1)
+    parameters = dict(pseudobulk.parameters)
+    parameters.update({"mode": "apply_membership", "membership_source_id": pseudobulk.provenance.stable_id})
+    return PseudobulkResult(
+        counts=aggregated,
+        metadata=metadata,
+        parameters=parameters,
+        graph_summary={"membership_applied": True},
+        parent_ids=(pseudobulk.provenance.stable_id,),
+    )
 
 def plot_pseudobulk_scatter(
     result: PseudobulkResult,

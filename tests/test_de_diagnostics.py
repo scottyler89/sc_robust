@@ -78,6 +78,11 @@ class _SuccessfulDDS:
     def calculate_cooks(self): pass
 
 
+def test_fallback_count_excludes_non_events():
+    from sc_robust.de.differential_expression import _count_fallback_events
+    assert _count_fallback_events([{"irls_ridge_applied": False, "cox_reid_ridge_retry": False}]) == 0
+    assert _count_fallback_events([{"irls_ridge_applied": True, "cox_reid_ridge_retry": False}]) == 1
+
 def test_fit_success_collects_fallback_records(monkeypatch):
     from sc_robust.de import differential_expression as de
 

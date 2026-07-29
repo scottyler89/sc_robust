@@ -105,3 +105,14 @@ def test_result_rejects_two_different_configuration_sources():
             parameters={"alpha": 0.1},
             provenance=envelope,
         )
+
+def test_pseudobulk_content_hash_changes_with_counts():
+    first = PseudobulkResult(
+        counts=pd.DataFrame([[1, 2]], index=["pb-1"], columns=["g1", "g2"]),
+        metadata=pd.DataFrame({"source_cell_ids": [["c1"]]}, index=["pb-1"]),
+    )
+    second = PseudobulkResult(
+        counts=pd.DataFrame([[1, 3]], index=["pb-1"], columns=["g1", "g2"]),
+        metadata=pd.DataFrame({"source_cell_ids": [["c1"]]}, index=["pb-1"]),
+    )
+    assert first.provenance.stable_id != second.provenance.stable_id

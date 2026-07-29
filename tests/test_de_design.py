@@ -65,3 +65,14 @@ def test_rank_deficient_formula_fails_before_fit():
         assert "rank deficient" in str(exc)
     else:
         raise AssertionError("rank-deficient design did not fail")
+
+def test_package_coefficient_alias_resolves_formulaic_label():
+    from types import SimpleNamespace
+    from sc_robust.de.differential_expression import _resolve_design_column
+
+    dds = SimpleNamespace(
+        _sc_robust_design_spec=SimpleNamespace(
+            coefficient_map={"condition=treated": "condition_treated"}
+        )
+    )
+    assert _resolve_design_column(dds, "condition_treated", ["condition[control]", "condition[treated]"]) == "condition[treated]"

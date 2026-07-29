@@ -235,6 +235,49 @@ def hash_payload(
     )
 
 
+def hash_array_content(
+    value: Any,
+    *,
+    domain: str = "array-content",
+    schema_version: str = PROVENANCE_SCHEMA_VERSION,
+) -> HashRecord:
+    """Hash dense or sparse numeric array content with shape and dtype."""
+    from scipy import sparse
+
+    if hasattr(value, "to_numpy"):
+        value = value.to_numpy()
+    digest = hashlib.sha256()
+    digest.update(_domain_prefix(domain, schema_version))
+    if sparse.issparse(value):
+        matrix = value.tocsr()
+        digest.update(b"sparse-csr\0")
+        digest.update(str(matrix.shape).encode("ascii"))
+        digest.update(str(matrix.dtype).encode("ascii"))
+        for part in (matrix.indptr, matrix.indices, matrix.data):
+            array = np.ascontiguousarray(part)
+            digest.update(str(array.dtype).encode("ascii"))
+            digest.update(array.tobytes(order="C"))
+        count = int(matrix.shape[0] * matrix.shape[1])
+    else:
+        array = np.asarray(value)
+        if array.ndim == 0 or array.dtype.kind == "O":
+            raise ProvenanceSerializationError("Array content hashes require numeric arrays.")
+        array = np.ascontiguousarray(array)
+        digest.update(b"dense\0")
+        digest.update(str(array.shape).encode("ascii"))
+        digest.update(str(array.dtype).encode("ascii"))
+        digest.update(array.tobytes(order="C"))
+        count = int(array.size)
+    return HashRecord(
+        algorithm="sha256",
+        digest=digest.hexdigest(),
+        domain=domain,
+        encoding="raw-bytes",
+        ordering="content",
+        schema_version=schema_version,
+        count=count,
+    )
+
 def normalize_identifiers(values: Iterable[Any]) -> list[str]:
     if isinstance(values, (str, bytes)):
         raise TypeError("Identifier collections must not be a string or bytes value.")
@@ -569,6 +612,7 @@ __all__ = [
     "capture_dependency_versions",
     "freeze_json",
     "freeze_mapping",
+    "hash_array_content",
     "hash_file",
     "hash_membership_ids",
     "hash_ordered_ids",

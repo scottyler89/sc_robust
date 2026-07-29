@@ -74,6 +74,14 @@ def _numeric_summary(values: object) -> dict[str, object]:
     return summary
 
 
+def _count_fallback_events(records: Sequence[Mapping[str, object]]) -> int:
+    """Count applied numerical safeguards, not one record per gene."""
+    event_fields = ("irls_ridge_applied", "cox_reid_ridge_retry")
+    return sum(
+        sum(bool(record.get(field, False)) for field in event_fields)
+        for record in records
+    )
+
 def _select_design_columns(
     metadata: pd.DataFrame,
     design_columns: Optional[Sequence[str]],
@@ -232,7 +240,7 @@ def fit_deseq_dataset(dds: "DeseqDataSet") -> "DeseqDataSet":
         if records:
             fallback_records.extend(dict(record) for record in records)
     diagnostics["fallbacks"] = fallback_records
-    diagnostics["fallback_count"] = len(fallback_records)
+    diagnostics["fallback_count"] = _count_fallback_events(fallback_records)
     diagnostics["convergence"] = {
         "genes": len(getattr(inference, "last_irls_diagnostics", ()) or ()) if inference is not None else 0,
         "terminal_failures": 0,
@@ -282,6 +290,30 @@ def _ensure_design_matrix(dds: "DeseqDataSet") -> pd.DataFrame:
         matrix = pd.DataFrame(matrix)
     return matrix
 
+
+def _normalize_coefficient_label(name: str) -> str:
+    import re
+    return re.sub(r"_+", "_", re.sub(r"[^A-Za-z0-9]+", "_", str(name))).strip("_")
+
+def _resolve_design_column(dds: "DeseqDataSet", requested: str, design_cols: Sequence[str]) -> str:
+    """Resolve package-style coefficient aliases to PyDESeq2 formulaic columns."""
+    if requested in design_cols:
+        return requested
+    spec = getattr(dds, "_sc_robust_design_spec", None)
+    aliases = [requested]
+    if spec is not None:
+        for alias, canonical in dict(getattr(spec, "coefficient_map", {})).items():
+            if requested == alias or _normalize_coefficient_label(requested) == _normalize_coefficient_label(alias):
+                aliases.append(str(canonical))
+    normalized = {_normalize_coefficient_label(alias) for alias in aliases}
+    matches = [column for column in design_cols if _normalize_coefficient_label(column) in normalized]
+    if len(matches) == 1:
+        return matches[0]
+    available = ", ".join(map(str, design_cols))
+    raise ValueError(
+        f"Unknown coefficient {requested!r}. Available coefficients: {available}. "
+        "Use the formulaic label or its package-style alias."
+    )
 
 def _run_single_contrast(
     dds: "DeseqDataSet",
@@ -566,18 +598,20 @@ def run_pairwise_de(
     if save_dir_path is not None:
         save_dir_path.mkdir(parents=True, exist_ok=True)
 
-    tasks: List[Tuple[str, str, np.ndarray]] = []
-    for cluster1, cluster2 in pairs:
-        if cluster1 not in design_cols or cluster2 not in design_cols:
-            raise ValueError(f"Both clusters must exist in the design matrix: {cluster1}, {cluster2}")
+    tasks: List[Tuple[str, str, str, str, np.ndarray]] = []
+    for requested1, requested2 in pairs:
+        actual1 = _resolve_design_column(dds, requested1, design_cols)
+        actual2 = _resolve_design_column(dds, requested2, design_cols)
+        if actual1 == actual2:
+            raise ValueError("Pairwise coefficients must be distinct.")
         contrast = np.zeros(len(design_cols), dtype=float)
-        contrast[design_cols.index(cluster1)] = 1.0
-        contrast[design_cols.index(cluster2)] = -1.0
-        tasks.append((cluster1, cluster2, contrast))
+        contrast[design_cols.index(actual1)] = 1.0
+        contrast[design_cols.index(actual2)] = -1.0
+        tasks.append((str(requested1), str(requested2), actual1, actual2, contrast))
 
     results_map: Dict[str, Tuple[object, pd.DataFrame]] = {}
 
-    def compute(cluster1: str, cluster2: str, contrast: np.ndarray) -> Tuple[str, object, pd.DataFrame]:
+    def compute(requested1: str, requested2: str, actual1: str, actual2: str, contrast: np.ndarray) -> Tuple[str, object, pd.DataFrame]:
         stats_obj = _run_single_contrast(
             dds,
             contrast,
@@ -587,32 +621,32 @@ def run_pairwise_de(
         )
         results_df = stats_obj.results_df.copy()
         results_df = _merge_annotations(results_df, gene_annotations)
-        key = f"{cluster1}_vs_{cluster2}"
+        key = f"{requested1}_vs_{requested2}"
         return key, stats_obj, results_df
 
     workers = _effective_n_jobs(n_jobs)
     if workers == 1 or len(tasks) <= 1:
-        for cluster1, cluster2, contrast in tasks:
-            key, stats_obj, results_df = compute(cluster1, cluster2, contrast)
+        for requested1, requested2, actual1, actual2, contrast in tasks:
+            key, stats_obj, results_df = compute(requested1, requested2, actual1, actual2, contrast)
             results_map[key] = (stats_obj, results_df)
     else:
         with ThreadPoolExecutor(max_workers=workers) as executor:
             future_map = {
-                executor.submit(compute, cluster1, cluster2, contrast): (cluster1, cluster2)
-                for cluster1, cluster2, contrast in tasks
+                executor.submit(compute, requested1, requested2, actual1, actual2, contrast): (requested1, requested2)
+                for requested1, requested2, actual1, actual2, contrast in tasks
             }
             for future in as_completed(future_map):
                 key, stats_obj, results_df = future.result()
                 results_map[key] = (stats_obj, results_df)
 
-    for cluster1, cluster2, _ in tasks:
-        key = f"{cluster1}_vs_{cluster2}"
+    for requested1, requested2, actual1, actual2, _ in tasks:
+        key = f"{requested1}_vs_{requested2}"
         stats_obj, results_df = results_map[key]
         contrast_results[key] = results_df
         artifacts[key] = stats_obj
         contrast_diagnostics[key] = _contrast_record(
-            key, dict((f"{left}_vs_{right}", vec) for left, right, vec in tasks)[key], design_cols, results_df,
-            numerator=[cluster1], denominator=[cluster2],
+            key, dict((f"{left}_vs_{right}", vec) for left, right, _, _, vec in tasks)[key], design_cols, results_df,
+            numerator=[requested1], denominator=[requested2],
         )
 
         if plot_dir_path is not None:

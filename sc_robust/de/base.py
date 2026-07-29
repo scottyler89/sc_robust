@@ -12,7 +12,7 @@ import re
 import pandas as pd
 from matplotlib import pyplot as plt
 
-from ..provenance import ProvenanceEnvelope, canonical_json, hash_ordered_ids
+from ..provenance import ProvenanceEnvelope, canonical_json, hash_array_content, hash_ordered_ids
 
 from .plots import (
     plot_pathway_density_difference,
@@ -69,14 +69,17 @@ class PseudobulkResult(_ProvenanceResultMixin):
     metadata: pd.DataFrame
     parameters: Mapping[str, Any] = field(default_factory=dict)
     graph_summary: Optional[Mapping[str, Any]] = None
+    parent_ids: Sequence[str] = field(default_factory=tuple)
     provenance: Optional[ProvenanceEnvelope] = None
 
     def __post_init__(self) -> None:
         self._initialize_provenance(
             stage="pseudobulk",
+            parent_ids=self.parent_ids,
             inputs={
                 "orientation": "cells_x_genes",
                 "count_shape": [int(item) for item in self.counts.shape],
+                "count_content": hash_array_content(self.counts, domain="pseudobulk.count-content").to_dict(),
                 "cell_axis": _ordered_axis_input(self.metadata.index, domain="pseudobulk.cell-axis"),
                 "gene_axis": _ordered_axis_input(self.counts.columns, domain="pseudobulk.gene-axis"),
             },

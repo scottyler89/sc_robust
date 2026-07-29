@@ -12,6 +12,7 @@ _EXPORTS = {
     "resolve_pathway_filename": (".pathways", "resolve_pathway_filename"),
     "run_pathway_enrichment": (".pathways", "run_pathway_enrichment"),
     "run_pathway_enrichment_for_clusters": (".pathways", "run_pathway_enrichment_for_clusters"),
+    "apply_pseudobulk_membership": (".pseudobulk", "apply_pseudobulk_membership"),
     "build_pseudobulk": (".pseudobulk", "build_pseudobulk"),
     "filter_edges_within_clusters": (".pseudobulk", "filter_edges_within_clusters"),
     "plot_pseudobulk_scatter": (".pseudobulk", "plot_pseudobulk_scatter"),
