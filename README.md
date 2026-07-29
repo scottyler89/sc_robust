@@ -562,7 +562,7 @@ Notes for handoff
 - The current `perform_de_workflow(...)` helper hardcodes `stat_col="stat"`, so it is not the right interface for heterogeneous external score columns.
 
 
-Tahoe Handoff APIs
+Analysis Handoff APIs
 ------------------
 
 For the production input, artifact, failure, and orchestration boundary
@@ -570,8 +570,7 @@ contract, see [`docs/production_runbook.md`](docs/production_runbook.md).
 For the DE diagnostic field contract, see [`docs/diagnostics_schema.md`](docs/diagnostics_schema.md).
 
 The public contracts below use cells x genes counts and preserve reconstructable
-provenance. The examples are synthetic API templates; they do not require or
-reanalyze the LUAD dataset.
+provenance. The examples are synthetic API templates for downstream analysis.
 
 Validated count splitting
 

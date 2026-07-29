@@ -1,8 +1,8 @@
 # sc_robust Production Handoff
 
-This runbook defines the package contract before Tahoe-specific orchestration.
-It does not define Tahoe storage, scheduling, QC thresholds, DMSO matching, or
-contrast eligibility.
+This runbook defines the package contract before downstream orchestration.
+It does not define project-specific storage, scheduling, QC thresholds, control
+matching, or contrast eligibility.
 
 ## Install
 
@@ -56,6 +56,7 @@ and warnings. Never rely on stdout or a runtime monkeypatch.
 
 ## Scope Boundary
 
-The Tahoe project owns source decoding, global QC, shard ordering, distributed
-storage, scheduling, retries, DMSO matching, and scientific contrast manifests.
-Validate this contract with a frozen Tahoe pilot before production execution.
+The downstream project owns source decoding, global QC, shard ordering,
+distributed storage, scheduling, retries, control matching, and scientific
+contrast manifests. Validate this contract with a frozen integration pilot
+before production execution.

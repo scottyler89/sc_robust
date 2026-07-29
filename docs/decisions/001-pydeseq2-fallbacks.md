@@ -1,6 +1,6 @@
 # Decision 001: PyDESeq2 Sparse-Fit Safeguards
 
-Status: implementation reviewed; release pin pending publication/approval.
+Status: implementation reviewed and vendored in sc_robust `0.2.0`.
 
 ## Evidence
 
@@ -10,23 +10,23 @@ Status: implementation reviewed; release pin pending publication/approval.
   `780b48ec`; it is preserved and emits `irls_ridge_applied` diagnostics.
 - The formalized Cox-Reid safeguard retries one singular Fisher-information
   inversion with `1e-6 * I` and emits `cox_reid_ridge_retry` diagnostics.
-- The dirty sibling checkout remains untouched and is not an implementation
-  source or production import path.
+- The reviewed source is distributed in-repository and is not resolved from a
+  sibling checkout at runtime.
 
 ## Numerical Policy
 
 The safeguards are denominator/inversion protection for poor fits, not a new
 regularized estimator. Ordinary well-conditioned utility outputs were compared
 byte-for-byte against the stock clean checkout. Sparse fallback, singular retry,
-and full historical regression evidence are recorded in the Tahoe tracker.
+and full historical regression evidence are recorded in the production-readiness
+plan.
 
 ## Release Gate
 
-The sc_robust dependency metadata still declares unversioned `pydeseq2`. The
-reviewed fallback commit is local and is not yet a resolvable published release
-or approved fork reference. M1 therefore remains `in progress`; package
-metadata must be updated only after that immutable reference is published or
-approved, then CI and production-import checks must be rerun.
+The reviewed PyDESeq2 source is vendored under `pydeseq2/`, distributed with its
+MIT license, and identified by `__source_commit__`. It is not listed as an
+external dependency because the package ships the reviewed implementation.
+Wheel, import, source-identity, and license checks are part of release CI.
 
 
 ## Ordinary-Fit Comparison
