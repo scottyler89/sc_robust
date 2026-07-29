@@ -719,6 +719,8 @@ events and evidence; it does not redefine milestone status.
 
 | 2026-07-28 | PR | Final production-readiness validation | `55bb604`, `30381750405` | Local suite `108 passed, 17 warnings`; `uv lock --check`; clean sdist/wheel build and `twine check` passed; CI green for Python 3.10, 3.11, 3.12, DE, and pathway-only jobs; Tahoe/LUAD execution excluded. |
 
+| 2026-07-29 | PR | Closed vendored PyDESeq2 full-install dependency gap | `e8b2fe4`, `3a9133f`, `30489343312` | Declared `formulaic>=1.0.2`, `formulaic-contrasts>=0.2.0`, and direct `joblib`; full DE suite `16 passed`, full suite `108 passed`; rebuilt wheel metadata and `twine check` passed; final CI green for DE, pathway, and Python 3.10, 3.11, and 3.12. |
+
 Update protocol:
 
 - Set a milestone `in progress` in the tracker before implementation begins.
