@@ -123,7 +123,7 @@ def _envelope(**overrides):
         "parent_ids": ("graph:abc",),
         "algorithm": {"mode": "topology", "partition_by": ["sample"]},
         "inputs": {"cell_axis": {"digest": "abc", "shape": [10, 5]}},
-        "environment": {"sc_robust": "0.1.9"},
+        "environment": {"sc_robust": "0.2.0"},
         "execution": {"seed": 7, "n_cpus": 2},
         "diagnostics": {"warnings": []},
         "created_utc": "2025-01-01T00:00:00Z",
