@@ -18,7 +18,7 @@ classifiers = [
 ]
 
 [project.optional-dependencies]
-full = ["anndata", "count_split", "networkx", "statsmodels", "torch", "faiss-cpu", "anticor_features>=0.2.7", "igraph", "leidenalg", "pymetis", "dill", "numba", "h5py", "formulaic>=1.0.2", "formulaic-contrasts>=0.2.0"]
+full = ["anndata", "count_split", "networkx", "statsmodels", "torch", "faiss-cpu", "anticor_features>=0.2.7", "igraph", "leidenalg", "pymetis", "dill", "numba", "h5py", "joblib", "formulaic>=1.0.2", "formulaic-contrasts>=0.2.0"]
 test = ["pytest", "tomli; python_version < '3.11'"]
 
 [project.urls]

@@ -28,7 +28,7 @@ def _scan_top_level_imports(pkg_root: Path) -> set[str]:
 
 def test_imported_dependencies_are_declared_in_pyproject():
     repo_root = Path(__file__).resolve().parents[1]
-    imports = _scan_top_level_imports(repo_root / "sc_robust")
+    imports = _scan_top_level_imports(repo_root / "sc_robust") | _scan_top_level_imports(repo_root / "pydeseq2")
     project = tomllib.loads((repo_root / "pyproject.toml").read_text(encoding="utf-8"))
     declared = list(project["project"]["dependencies"]) + list(project["project"]["optional-dependencies"]["full"])
     reqs = {re.split(r"[<>=~!]", value, maxsplit=1)[0].strip() for value in declared}
@@ -37,6 +37,7 @@ def test_imported_dependencies_are_declared_in_pyproject():
     rename = {
         "sklearn": "scikit-learn",
         "faiss": "faiss-cpu",
+        "formulaic_contrasts": "formulaic-contrasts",
     }
     imports_norm = {rename.get(m, m) for m in imports}
 
