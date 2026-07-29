@@ -16,7 +16,7 @@ For pathway-only use, install `sc_robust` without extras; the base package conta
 the pathway API and does not eagerly import the full graph/DE stack. For the full
 graph/DE pipeline, install `sc_robust[full]`; this route pins the supported
 AnnData and Zarr compatibility range and includes the vendored DE backend dependencies.
-The supported DE environment currently requires `anndata>=0.11.4,<0.14` and `zarr>=2,<4`. The contained PyDESeq2 compatibility layer handles both AnnData 0.11 with Zarr 2 and AnnData 0.12-0.13 with Zarr 3. AnnData 0.11 rejects Zarr 3 at import, so existing legacy environments must retain the `0.11 + Zarr 2` pairing; a fresh install resolves the modern pair.
+The supported DE environment uses Python-conditional requirements: Python 3.10 uses `anndata>=0.11.4,<0.12` with `zarr>=2.18.3,<3`, while Python 3.11-3.14 uses `anndata>=0.12.19,<0.14` with `zarr>=2.18.7,<4,!=3.0.*`. The contained PyDESeq2 compatibility layer supports both tested stacks; modern Python environments resolve the modern pair by default.
 
 For reproducible CI or release reconstruction, install `uv`, run `uv lock --check`, and use `uv sync --frozen --all-extras` or `uv export --frozen --all-extras`.
 
@@ -39,7 +39,7 @@ Optional/adjacent tools
 - umap-learn: if you want to run UMAP on precomputed graphs
 
 Python compatibility
-- Supported and tested on Python 3.10-3.12. Other versions are not currently supported.
+- Supported and tested on Python 3.10-3.14. Other versions are not currently supported.
 
 Data conventions
 ----------------

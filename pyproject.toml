@@ -6,7 +6,7 @@ build-backend = "setuptools.build_meta"
 name = "sc_robust"
 dynamic = ["version", "readme"]
 description = "A statistically robust pipeline for building cell-cell graphs from single cell RNAseq"
-requires-python = ">=3.10,<3.13"
+requires-python = ">=3.10,<3.15"
 authors = [{ name = "Scott Tyler", email = "scottyler89@gmail.com" }]
 license = "AGPL-3.0-only"
 license-files = ["LICENSE"]
@@ -18,7 +18,7 @@ classifiers = [
 ]
 
 [project.optional-dependencies]
-full = ["anndata>=0.11.4,<0.14", "count_split", "networkx", "statsmodels", "torch", "faiss-cpu", "anticor_features>=0.2.7", "igraph", "leidenalg", "pymetis", "dill", "numba", "h5py", "zarr>=2,<4", "joblib", "formulaic>=1.0.2", "formulaic-contrasts>=0.2.0"]
+full = ["anndata>=0.11.4,<0.12; python_version < '3.11'", "anndata>=0.12.19,<0.14; python_version >= '3.11'", "count_split", "networkx", "statsmodels", "torch", "faiss-cpu", "anticor_features>=0.2.7", "igraph", "leidenalg", "pymetis", "dill", "numba", "h5py", "zarr>=2.18.3,<3; python_version < '3.11'", "zarr>=2.18.7,<4,!=3.0.*; python_version >= '3.11'", "joblib", "formulaic>=1.0.2", "formulaic-contrasts>=0.2.0"]
 test = ["pytest", "tomli; python_version < '3.11'"]
 
 [project.urls]
