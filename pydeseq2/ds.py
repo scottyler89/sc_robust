@@ -151,7 +151,7 @@ class DeseqStats:
         self.alpha = alpha
         self.cooks_filter = cooks_filter
         self.independent_filter = independent_filter
-        self.base_mean = self.dds.varm["_normed_means"].copy()
+        self.base_mean = np.asarray(self.dds.varm["_normed_means"]).reshape(-1).copy()
         self.prior_LFC_var = prior_LFC_var
 
         if lfc_null < 0 and alt_hypothesis in {"greaterAbs", "lessAbs"}:

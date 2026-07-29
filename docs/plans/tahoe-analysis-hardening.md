@@ -726,6 +726,8 @@ events and evidence; it does not redefine milestone status.
 
 | 2026-07-29 | PR | Validated Python 3.13 and 3.14 expansion | pending | Full requirements resolve for Python 3.13 and 3.14; direct synthetic contained PyDESeq2 fits pass under both interpreters with AnnData 0.13.2 and Zarr 3.2.1. CI matrix now includes Python 3.13 and 3.14; remote CI validation remains required. |
 
+| 2026-07-29 | PR | Fixed remaining Tahoe integration defects | pending | `apply_pseudobulk_membership` now aggregates CSR/CSC counts through a sparse membership matrix; independent filtering normalizes the modern AnnData base-mean vector. Added direct CSR regression coverage and full pairwise DE regression coverage. Local suite `113 passed`; modern Python 3.13/Pandas 3 target passed; real Tahoe validation remains downstream. |
+
 Update protocol:
 
 - Set a milestone `in progress` in the tracker before implementation begins.

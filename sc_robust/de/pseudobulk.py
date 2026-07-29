@@ -333,7 +333,20 @@ def apply_pseudobulk_membership(
             "Pseudobulk membership is unavailable; build with retain_source_cells=True "
             "and explicit or metadata-backed cell IDs."
         )
-    if isinstance(counts, pd.DataFrame):
+    heldout_sparse = None
+    if sparse.issparse(counts):
+        if counts.ndim != 2:
+            raise ValueError("Held-out counts must be a 2D cells-by-genes matrix.")
+        if cell_ids is None:
+            raise ValueError("cell_ids are required for sparse held-out counts.")
+        if len(cell_ids) != counts.shape[0]:
+            raise ValueError("cell_ids must match the held-out count rows.")
+        heldout_index = pd.Index([str(value) for value in cell_ids])
+        heldout_columns = list(gene_ids) if gene_ids is not None else list(pseudobulk.counts.columns)
+        if len(heldout_columns) != counts.shape[1]:
+            raise ValueError("gene_ids must match the held-out count columns.")
+        heldout_sparse = sparse.csr_matrix(counts)
+    elif isinstance(counts, pd.DataFrame):
         heldout = counts.copy()
         if cell_ids is not None:
             if len(cell_ids) != len(heldout):
@@ -343,6 +356,8 @@ def apply_pseudobulk_membership(
             heldout.index = [str(value) for value in heldout.index]
         if gene_ids is not None and list(map(str, heldout.columns)) != list(map(str, gene_ids)):
             raise ValueError("gene_ids must match the held-out DataFrame columns when both are supplied.")
+        heldout_index = heldout.index
+        heldout_columns = list(heldout.columns)
     else:
         array = np.asarray(counts)
         if array.ndim != 2:
@@ -355,7 +370,9 @@ def apply_pseudobulk_membership(
         if len(columns) != array.shape[1]:
             raise ValueError("gene_ids must match the held-out count columns.")
         heldout = pd.DataFrame(array, index=[str(value) for value in cell_ids], columns=columns)
-    if heldout.index.has_duplicates:
+        heldout_index = heldout.index
+        heldout_columns = list(heldout.columns)
+    if heldout_index.has_duplicates:
         raise ValueError("Held-out cell IDs must be unique.")
     expected_members = []
     memberships = []
@@ -368,16 +385,30 @@ def apply_pseudobulk_membership(
     if len(set(expected_members)) != len(expected_members):
         raise ValueError("Pseudobulk memberships overlap; each source cell must belong to one group.")
     expected = set(expected_members)
-    observed = set(heldout.index)
+    observed = set(heldout_index)
     if expected != observed:
         missing = sorted(expected - observed)
         extra = sorted(observed - expected)
         raise ValueError(f"Held-out cell IDs do not match learned membership; missing={missing[:5]}, extra={extra[:5]}.")
     expected_genes = list(map(str, pseudobulk.counts.columns))
-    if list(map(str, heldout.columns)) != expected_genes:
+    if list(map(str, heldout_columns)) != expected_genes:
         raise ValueError("Held-out gene IDs must match the learned pseudobulk gene order.")
+    if heldout_sparse is not None:
+        cell_positions = {cell_id: position for position, cell_id in enumerate(heldout_index)}
+        membership_rows = []
+        membership_cols = []
+        for row_number, (_, members) in enumerate(memberships):
+            membership_rows.extend([row_number] * len(members))
+            membership_cols.extend(cell_positions[cell_id] for cell_id in members)
+        membership_matrix = sparse.csr_matrix(
+            (np.ones(len(membership_rows), dtype=np.int8), (membership_rows, membership_cols)),
+            shape=(len(memberships), len(heldout_index)),
+        )
+        aggregated_values = (membership_matrix @ heldout_sparse).toarray()
+    else:
+        aggregated_values = [heldout.loc[members].sum(axis=0).to_numpy() for _, members in memberships]
     aggregated = pd.DataFrame(
-        [heldout.loc[members].sum(axis=0) for _, members in memberships],
+        aggregated_values,
         index=[pb_id for pb_id, _ in memberships],
         columns=pseudobulk.counts.columns,
     )

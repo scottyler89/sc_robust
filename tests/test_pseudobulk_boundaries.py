@@ -73,4 +73,8 @@ def test_apply_pseudobulk_membership_to_held_out_counts():
     held_out = pd.DataFrame([[10, 1], [2, 3], [4, 5]], index=["c1", "c2", "c3"], columns=["g1", "g2"])
     result = apply_pseudobulk_membership(learned, held_out)
     assert result.counts.loc["pb-0", "g1"] == 12
+    sparse_result = apply_pseudobulk_membership(
+        learned, sparse.csr_matrix(held_out.to_numpy()), cell_ids=held_out.index, gene_ids=held_out.columns
+    )
+    pd.testing.assert_frame_equal(result.counts, sparse_result.counts)
     assert result.provenance.parent_ids == (learned.provenance.stable_id,)

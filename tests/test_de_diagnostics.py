@@ -86,7 +86,7 @@ def test_fallback_count_excludes_non_events():
 
 def test_vendored_fit_handles_ann_data_vector_shapes():
     from sc_robust.de.base import PseudobulkResult
-    from sc_robust.de.differential_expression import fit_deseq_dataset, prepare_deseq_dataset
+    from sc_robust.de.differential_expression import fit_deseq_dataset, prepare_deseq_dataset, run_pairwise_de
 
     rng = np.random.default_rng(4)
     counts = rng.poisson(20, size=(12, 30)).astype(np.int64)
@@ -107,6 +107,14 @@ def test_vendored_fit_handles_ann_data_vector_shapes():
         inference_kwargs={"n_cpus": 1},
     )
     fit_deseq_dataset(dds)
+    pairwise = run_pairwise_de(
+        dds,
+        pairs=[("condition_treated", "condition_control")],
+        independent_filter=True,
+        cooks_filter=False,
+        n_jobs=1,
+    )
+    assert list(pairwise.contrast_results) == ["condition_treated_vs_condition_control"]
     assert dds.varm["non_zero"].shape[0] == 30
 
 def test_fit_success_collects_fallback_records(monkeypatch):
