@@ -1821,7 +1821,7 @@ test = [
 
 [package.metadata]
 requires-dist = [
-    { name = "anndata", marker = "extra == 'full'", specifier = "==0.11.4" },
+    { name = "anndata", marker = "extra == 'full'", specifier = ">=0.11.4,<0.12" },
     { name = "anticor-features", marker = "extra == 'full'", specifier = ">=0.2.7" },
     { name = "count-split", marker = "extra == 'full'" },
     { name = "dill", marker = "extra == 'full'" },

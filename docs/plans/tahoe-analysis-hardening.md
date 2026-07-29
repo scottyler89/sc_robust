@@ -721,7 +721,8 @@ events and evidence; it does not redefine milestone status.
 
 | 2026-07-29 | PR | Closed vendored PyDESeq2 full-install dependency gap | `e8b2fe4`, `3a9133f`, `30489343312` | Declared `formulaic>=1.0.2`, `formulaic-contrasts>=0.2.0`, and direct `joblib`; full DE suite `16 passed`, full suite `108 passed`; rebuilt wheel metadata and `twine check` passed; final CI green for DE, pathway, and Python 3.10, 3.11, and 3.12. |
 
-| 2026-07-29 | PR | Addressed integration feedback on DE, provenance, environment, and held-out membership | `629a2ba`, `f278e37` |`629a2ba`, `f278e37`, `6b082f4`, `30491848892` | Coefficient aliases resolve formulaic labels; fallback counts reflect applied events; pseudobulk count content is hashed; `[full]` pins `anndata==0.11.4` and `zarr<3`; `apply_pseudobulk_membership` is public and provenance-linked; local suite `112 passed`; final CI green for DE, pathway, and Python 3.10-3.12. |
+| 2026-07-29 | PR | Addressed integration feedback on DE, provenance, environment, and held-out membership | `629a2ba`, `f278e37` |`629a2ba`, `f278e37`, `6b082f4`, `30491848892` | Coefficient aliases resolve formulaic labels; fallback counts reflect applied events; pseudobulk count content is hashed; `[full]` declares `anndata>=0.11.4,<0.12` and `zarr<3`; `apply_pseudobulk_membership` is public and provenance-linked; local suite `112 passed`; final CI green for DE, pathway, and Python 3.10-3.12. |
+| 2026-07-29 | PR | Tested modern AnnData boundary and removed exact pin | pending | In an isolated environment, AnnData 0.12.19 imports and prepares a DE dataset but the vendored PyDESeq2 fit fails on `varm["non_zero"]` dimensionality; AnnData 0.13.2 cannot resolve with `zarr<3` because it requires `zarr>=3.1`. The supported declaration is now `anndata>=0.11.4,<0.12`; full-fit validation remains on the 0.11 line. |
 
 Update protocol:
 
