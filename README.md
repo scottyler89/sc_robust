@@ -16,7 +16,7 @@ For pathway-only use, install `sc_robust` without extras; the base package conta
 the pathway API and does not eagerly import the full graph/DE stack. For the full
 graph/DE pipeline, install `sc_robust[full]`; this route pins the supported
 AnnData and Zarr compatibility range and includes the vendored DE backend dependencies.
-The supported DE environment currently requires `anndata>=0.11.4,<0.12` and `zarr<3`:
+The supported DE environment currently requires `anndata>=0.11.4,<0.12` and `zarr>=2,<3`:
 AnnData 0.11.4 rejects Zarr 3 during import, while AnnData 0.12+ reaches preparation but is not compatible with the vendored PyDESeq2
 fit path. AnnData 0.13+ additionally requires Zarr 3, so it is outside this supported stack.
 
