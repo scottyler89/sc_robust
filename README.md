@@ -15,7 +15,8 @@ python -m pip install ".[full]"
 For pathway-only use, install `sc_robust` without extras; the base package contains
 the pathway API and does not eagerly import the full graph/DE stack. For the full
 graph/DE pipeline, install `sc_robust[full]`; this route pins the supported
-AnnData and Zarr compatibility range and includes the vendored DE backend dependencies.
+AnnData and Zarr compatibility range, requires `count_split>=1.0.0`, and
+includes the vendored DE backend dependencies.
 The supported DE environment uses Python-conditional requirements: Python 3.10 uses `anndata>=0.11.4,<0.12` with `zarr>=2.18.3,<3`, while Python 3.11-3.14 uses `anndata>=0.12.19,<0.14` with `zarr>=2.18.7,<4,!=3.0.*`. The contained PyDESeq2 compatibility layer supports both tested stacks; modern Python environments resolve the modern pair by default.
 
 For reproducible CI or release reconstruction, install `uv`, run `uv lock --check`, and use `uv sync --frozen --all-extras` or `uv export --frozen --all-extras`.

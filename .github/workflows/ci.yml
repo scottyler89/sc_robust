@@ -53,7 +53,7 @@ jobs:
           python -m venv --system-site-packages /tmp/sc-robust-wheel
           /tmp/sc-robust-wheel/bin/python -m pip install --no-deps dist/*.whl
           cd /tmp
-          /tmp/sc-robust-wheel/bin/python -c "import pydeseq2, sc_robust; assert sc_robust.__version__ == \"0.2.0\"; assert pydeseq2.__source_commit__ == \"8d1c39f7bf17aabe105458b02040f8c9770f8637\""
+          /tmp/sc-robust-wheel/bin/python -c "import pydeseq2, sc_robust; assert sc_robust.__version__ == \"0.3.0\"; assert pydeseq2.__source_commit__ == \"8d1c39f7bf17aabe105458b02040f8c9770f8637\""
           test -f /tmp/sc-robust-wheel/lib/python*/site-packages/sc_robust-*.dist-info/licenses/LICENSE
 
 
