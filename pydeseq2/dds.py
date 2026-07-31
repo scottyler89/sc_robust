@@ -1080,7 +1080,7 @@ class DeseqDataSet(ad.AnnData):
         self._replace_outliers()
         if not self.quiet:
             print(
-                f"Replacing {sum(_varm_vector(self, "replaced")) } outlier genes.\n",
+                f"Replacing {sum(_varm_vector(self, 'replaced'))} outlier genes.\n",
                 file=sys.stderr,
             )
 

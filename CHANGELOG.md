@@ -8,3 +8,5 @@
   delivered by the `count_split` 1.0 release series.
 - Retain the existing cells × genes adapter, exact conservation checks, and
   public `split_counts` interface.
+- Restore Python 3.10 and 3.11 parser compatibility in the vendored PyDESeq2
+  outlier-refit status message.
