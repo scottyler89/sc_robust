@@ -117,6 +117,34 @@ def test_vendored_fit_handles_ann_data_vector_shapes():
     assert list(pairwise.contrast_results) == ["condition_treated_vs_condition_control"]
     assert dds.varm["non_zero"].shape[0] == 30
 
+
+def test_vendored_fit_initializes_refitted_mask_for_cooks_outlier():
+    from pydeseq2.dds import _varm_vector
+    from sc_robust.de.base import PseudobulkResult
+    from sc_robust.de.differential_expression import fit_deseq_dataset, prepare_deseq_dataset
+
+    rng = np.random.default_rng(44)
+    counts = rng.poisson(20, size=(16, 20)).astype(np.int64)
+    counts[0, 0] = 10_000
+    index = [f"pb{i}" for i in range(16)]
+    result = PseudobulkResult(
+        counts=pd.DataFrame(counts, index=index, columns=[f"g{i}" for i in range(20)]),
+        metadata=pd.DataFrame(
+            {"condition": pd.Categorical(["control"] * 8 + ["treated"] * 8)},
+            index=index,
+        ),
+    )
+    dds = prepare_deseq_dataset(
+        result,
+        design="~ 0 + condition",
+        min_counts=0,
+        min_variance=0,
+        inference_kwargs={"n_cpus": 1},
+    )
+    fit_deseq_dataset(dds)
+    assert int(_varm_vector(dds, "replaced").sum()) == 1
+    assert int(_varm_vector(dds, "refitted").sum()) == 1
+
 def test_fit_success_collects_fallback_records(monkeypatch):
     from sc_robust.de import differential_expression as de
 

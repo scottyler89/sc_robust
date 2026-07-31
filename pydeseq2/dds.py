@@ -1401,7 +1401,7 @@ class DeseqDataSet(ad.AnnData):
 
         values = _varm_vector(self, "replaced").copy()
         # Only replace if genes are not all zeroes after outlier replacement
-        values[_varm_vector(self, "refitted")] = ~new_all_zeroes
+        values[values] = ~new_all_zeroes
         _set_varm_vector(self, "refitted", values)
 
         # Take into account new all-zero genes
@@ -1436,7 +1436,11 @@ class DeseqDataSet(ad.AnnData):
         )
 
         # Use the same size factors
-        _set_obsm_vector(sub_dds, "size_factors", self.counts_to_refit.obsm["size_factors"])
+        _set_obsm_vector(
+            sub_dds,
+            "size_factors",
+            _obsm_vector(self.counts_to_refit, "size_factors"),
+        )
         sub_dds.layers["normed_counts"] = (
             sub_dds.X / _obsm_vector(sub_dds, "size_factors")[:, None]
         )
@@ -1470,12 +1474,12 @@ class DeseqDataSet(ad.AnnData):
         sub_dds.fit_LFC()
 
         # Replace values in main object
+        mask = _varm_vector(self, "refitted")
         values = _varm_vector(self, "_normed_means").copy()
         values[mask] = _varm_vector(sub_dds, "_normed_means")
         _set_varm_vector(self, "_normed_means", values)
         self.varm["LFC"][_varm_vector(self, "refitted")] = sub_dds.varm["LFC"]
         values = _varm_vector(self, "genewise_dispersions").copy()
-        mask = _varm_vector(self, "refitted")
         values[mask] = _varm_vector(sub_dds, "genewise_dispersions")
         _set_varm_vector(self, "genewise_dispersions", values)
         values = _varm_vector(self, "fitted_dispersions").copy()
