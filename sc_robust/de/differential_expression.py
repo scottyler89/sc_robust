@@ -222,6 +222,26 @@ def fit_deseq_dataset(dds: "DeseqDataSet") -> "DeseqDataSet":
     diagnostics.setdefault("status", "fitting")
     try:
         dds.fit_size_factors()
+        # PyDESeq2's iterative size-factor path performs temporary dispersion
+        # fits under an intercept-only design.  Those temporary ``varm`` fields
+        # must not satisfy the cache checks for the real design below: they can
+        # leave ``fitted_dispersions`` present without the corresponding
+        # ``disp_function_type`` metadata, causing Cook's refitting to fail.
+        uns = getattr(dds, "uns", None)
+        varm = getattr(dds, "varm", None)
+        if uns is not None and varm is not None and "disp_function_type" not in uns:
+            for key in (
+                "genewise_dispersions",
+                "fitted_dispersions",
+                "dispersions",
+                "_genewise_converged",
+                "_MAP_converged",
+                "disp_outlier",
+            ):
+                if key in varm:
+                    del varm[key]
+            for key in ("_squared_logres", "prior_disp_var", "trend_coeffs", "mean_disp"):
+                uns.pop(key, None)
         dds.fit_genewise_dispersions()
         dds.fit_dispersion_prior()
         dds.fit_MAP_dispersions()
