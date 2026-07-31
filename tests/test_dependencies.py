@@ -50,3 +50,8 @@ def test_imported_dependencies_are_declared_in_pyproject():
     missing = sorted((imports_norm - reqs) - optional)
     assert missing == [], f"Missing dependencies in pyproject.toml: {missing}"
 
+
+def test_full_extra_requires_corrected_count_split_release():
+    repo_root = Path(__file__).resolve().parents[1]
+    project = tomllib.loads((repo_root / "pyproject.toml").read_text(encoding="utf-8"))
+    assert "count_split>=1.0.0" in project["project"]["optional-dependencies"]["full"]
