@@ -442,8 +442,8 @@ wheels = [
 
 [[package]]
 name = "count-split"
-version = "1.0.0"
-source = { git = "https://github.com/scottyler89/count_split.git?tag=v1.0.0#f9a070c0ee73f9e8f7010b3b46b21fd628cd4b63" }
+version = "1.0.1"
+source = { git = "https://github.com/scottyler89/count_split.git?tag=v1.0.1#4cfa16edf98911dbf901b6f0ed3e29fed647e5c6" }
 dependencies = [
     { name = "h5py" },
     { name = "numba" },
@@ -2852,7 +2852,7 @@ requires-dist = [
     { name = "anndata", marker = "python_full_version >= '3.11' and extra == 'full'", specifier = ">=0.12.19,<0.14" },
     { name = "anndata", marker = "python_full_version < '3.11' and extra == 'full'", specifier = ">=0.11.4,<0.12" },
     { name = "anticor-features", marker = "extra == 'full'", specifier = ">=0.2.7" },
-    { name = "count-split", marker = "extra == 'full'", git = "https://github.com/scottyler89/count_split.git?tag=v1.0.0" },
+    { name = "count-split", marker = "extra == 'full'", git = "https://github.com/scottyler89/count_split.git?tag=v1.0.1" },
     { name = "dill", marker = "extra == 'full'" },
     { name = "faiss-cpu", marker = "extra == 'full'" },
     { name = "formulaic", marker = "extra == 'full'", specifier = ">=1.0.2" },
